@@ -1,0 +1,73 @@
+# SoundRemover 作業引き継ぎ書 (Handover Document)
+
+最終更新: 2026-10-18 (ToDo 2 完了 / ToDo 3 着手前)
+
+---
+
+## 1. プロジェクト概要・目的
+- **目的**: 中学生の吹奏楽部の発表動画（屋外ステージ・ホール・体育館など）からロスレス（無劣化）で音声を抽出し、演奏音質（楽器の倍音やダイナミクス）を落とさずに「観客の話し声・アナウンス・咳払い」「ホワイトノイズ・空調音」「屋外の風切り音」をピンポイントで除去・音量調整・曲分割できるデスクトップGUIアプリを作成する。
+- **作業ディレクトリ**: `C:\Users\osia3\GitProjects\movieseparator`
+- **リモートリポジトリ**: `https://github.com/t2k2pp/SoundRemover.git` (`main` ブランチ)
+
+---
+
+## 2. 厳守すべき開発ルール・ユーザー要件
+1. **設計とToDo管理**: 設計書を `Doc/` 配下に残し、`ToDo.md` および本引き継ぎ書 (`Doc/04_Handover_and_Status.md`) をステップごとに更新する。
+2. **こまめなPush**: 各ToDoの区切りごとにリモートリポジトリ (`origin/main`) にコミット・Pushする。
+3. **Gitコマンドの制約**: Gitコマンドを `&&` で繋がない（1行ずつ改行して実行する）。
+4. **コマンド実行時の説明**: コマンドを実行する際は、日本語で「何のために何の許可を貰おうとしているのか」を明示する。
+5. **コード削除・変更時の注意**: 意図しない処理の削除がないか確認し、用途不明のコードを勝手に削除しない。楽な方法への勝手な変更や妥協をしない。
+6. **マルチ環境・配布対応**:
+   - 開発機(Windows): `NVIDIA GeForce RTX 3060 Laptop GPU` + `AMD Radeon(TM) Graphics`
+   - 他所有機: `M4 Mac mini` (MPS)、`AMD AI Max+ 395 Strix Halo` (Linux ROCm)
+   - 他の吹奏楽部の保護者への配布も見据え、環境に合わせて `CUDA` / `DirectML` / `MPS` / `ROCm` / `CPU` を自動選択・手動切替できるようにする。
+
+---
+
+## 3. 現在の進捗状況
+
+### 完了済み
+- **[完了] ToDo 1: 設計書およびToDoリストの作成・初回Push** (Commit: `b0e5f7c`)
+  - `Doc/01_Architecture_and_Philosophy.md` (全体思想・アーキテクチャ設計)
+  - `Doc/02_Audio_Processing_Design.md` (音声処理・AIエンジン詳細設計)
+  - `Doc/03_UI_and_Distribution_Design.md` (GUI画面・マルチ環境配布設計)
+  - `ToDo.md`, `.gitignore`
+- **[完了] ToDo 2: プロジェクト基盤・マルチGPUデバイス管理・FFmpeg自動解決・ロスレス音声抽出エンジンの実装**
+  - `pyproject.toml`, `uv.lock`, `.venv` (Python 3.11.13 + PyTorch 2.5.1+cu124, Demucs 4.1.0, PySide6 6.12.0, static-ffmpeg 3.0 構築済)
+  - `README.md`
+  - `src/sound_remover/core/device_manager.py` (CUDA / ROCm / MPS / DirectML / CPU 自動検出・切替)
+  - `src/sound_remover/core/ffmpeg_manager.py` (システムFFmpeg / static-ffmpeg / imageio-ffmpeg 自動解決)
+  - `src/sound_remover/core/audio_data.py` (TimeRegion, SongChapter, ProcessingConfig, AudioSession, 吹奏楽プリセット4種)
+  - `src/sound_remover/processors/extractor.py` (ストリームコピー抽出 `ffmpeg -vn -acodec copy`、WAV24/16・FLAC・M4A・MP3 入出力)
+
+### 次に実施する作業
+- **[次ステップ] ToDo 3: 音声加工・AI処理エンジン群の実装**
+
+---
+
+## 4. 残りの作業（再開時に実施すること）
+
+1. **ToDo 3: 音声加工・AI処理エンジン群の実装とPush**
+   - `src/sound_remover/processors/vocal_remover.py`: Demucs (`htdemucs`) による声成分分離・残差引き算 (`X - αV`)・楽器保護帯域制限 (110Hz〜6500Hz)・ピンポイントリージョン適用＋コサインクロスフェード
+   - `src/sound_remover/processors/noise_reducer.py`: `noisereduce` によるホワイトノイズ除去・ノイズ見本区間からのプロファイル学習機能
+   - `src/sound_remover/processors/eq_filter.py`: 屋外風切り音ハイパスフィルタ＋吹奏楽4バンドEQ（80Hz, 280Hz, 2.5kHz, 8kHz）
+   - `src/sound_remover/processors/mastering.py`: `pyloudnorm` ラウドネスノーマライズ (LUFS) ＋ ソフトニー・ピークリミッター ＋ 曲分割・フェードイン/アウト書き出し
+   - `src/sound_remover/core/pipeline.py`: 全プロセッサを統括する非破壊オーディオ処理パイプライン
+3. **ToDo 4: デスクトップGUI (`PySide6` + `PyQtGraph`) の実装とPush**
+   - `src/sound_remover/ui/theme.py`
+   - `src/sound_remover/ui/waveform_widget.py` (波形表示・範囲選択・ピンポイント区間登録・ノイズ見本登録・曲分割登録)
+   - `src/sound_remover/ui/player_widget.py` (Original / Processed ワンクリックA/B聴き比べ再生プレイヤー)
+   - `src/sound_remover/ui/main_window.py` および `src/sound_remover/main.py`
+4. **ToDo 5: 自動テスト・サンプル検証・起動スクリプト整備と最終Push**
+   - `tests/test_device_manager.py`, `tests/test_processors.py` の作成と `uv run pytest` による全テスト通過確認
+   - `run_windows.bat`, `run_unix.sh` の作成と動作確認
+
+---
+
+## 5. 作業再開時の確認コマンド
+作業を再開する際は、以下のコマンドで状態を確認してください：
+```powershell
+git status
+git log -n 3 --oneline
+& "C:\Users\osia3\.local\bin\uv.exe" run python -c "import torch; print('CUDA:', torch.cuda.is_available())"
+```

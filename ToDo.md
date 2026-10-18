@@ -12,12 +12,12 @@
   - [x] `Doc/03_UI_and_Distribution_Design.md`（GUI画面・マルチ環境配布設計書）の作成
   - [x] `ToDo.md` および `.gitignore` の作成、Git初期化・リモート登録・`main` ブランチへのPush
 
-- [ ] **ToDo 2: プロジェクト基盤・マルチGPUデバイス管理・FFmpeg自動解決・ロスレス音声抽出エンジンの実装**
-  - [ ] `pyproject.toml` の作成と `uv` による仮想環境（PyTorch CUDA / DirectML対応、Demucs、PySide6、static-ffmpeg、noisereduce、scipy、pyloudnorm等）の構築
-  - [ ] `src/sound_remover/core/device_manager.py`（CUDA / DirectML / MPS / ROCm / CPU 自動検出と切替）の実装
-  - [ ] `src/sound_remover/core/ffmpeg_manager.py`（システムFFmpeg / 内蔵static-ffmpeg 自動検出）の実装
-  - [ ] `src/sound_remover/core/audio_data.py`（音声バッファ、ピンポイント適用リージョン、曲分割マーカー管理）の実装
-  - [ ] `src/sound_remover/processors/extractor.py`（動画からの無劣化ストリームコピー抽出 `ffmpeg -vn -acodec copy`、WAV/FLAC抽出、高品位float32読み込み・保存）の実装
+- [x] **ToDo 2: プロジェクト基盤・マルチGPUデバイス管理・FFmpeg自動解決・ロスレス音声抽出エンジンの実装**
+  - [x] `pyproject.toml` の作成と `uv` による仮想環境（PyTorch CUDA / DirectML対応、Demucs、PySide6、static-ffmpeg、noisereduce、scipy、pyloudnorm等）の構築
+  - [x] `src/sound_remover/core/device_manager.py`（CUDA / DirectML / MPS / ROCm / CPU 自動検出と切替）の実装
+  - [x] `src/sound_remover/core/ffmpeg_manager.py`（システムFFmpeg / 内蔵static-ffmpeg 自動検出）の実装
+  - [x] `src/sound_remover/core/audio_data.py`（音声バッファ、ピンポイント適用リージョン、曲分割マーカー管理）の実装
+  - [x] `src/sound_remover/processors/extractor.py`（動画からの無劣化ストリームコピー抽出 `ffmpeg -vn -acodec copy`、WAV/FLAC抽出、高品位float32読み込み・保存）の実装
 
 - [ ] **ToDo 3: 音声加工・AI処理エンジン群（AIピンポイント声除去・ホワイトノイズ除去・屋外風EQ・吹奏楽マスタリング・非破壊パイプライン）の実装**
   - [ ] `src/sound_remover/processors/vocal_remover.py`（Demucsによる声成分抽出、残差引き算方式、楽器保護帯域制限、特定時間帯のみのピンポイント適用＋クロスフェード合成）の実装
