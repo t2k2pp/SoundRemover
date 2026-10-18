@@ -2,6 +2,7 @@
 SoundRemover メインGUIウィンドウ (`main_window.py`)
 
 動画・音声の読み込み（ドラッグ＆ドロップ対応）、完全ロスレス抽出、
+音響・周波数特性＆風切り音自動診断アシスタント、スマート風切り音除去（M/S乱流サプレッサー）、
 AIピンポイント声除去、ホワイトノイズ除去（ノイズ見本学習）、屋外風切り音ローカット＆吹奏楽4バンドEQ、
 ラウドネスノーマライズ・リミッター、曲分割一括書き出し、A/B聴き比べを1画面に統合する。
 """
@@ -33,6 +34,7 @@ from PySide6.QtWidgets import (
     QSlider,
     QSplitter,
     QTabWidget,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -45,6 +47,7 @@ from sound_remover.core.audio_data import (
 )
 from sound_remover.core.device_manager import DeviceManager
 from sound_remover.core.pipeline import AudioPipeline
+from sound_remover.processors.analyzer import AudioAnalyzer, AudioDiagnosisReport
 from sound_remover.processors.extractor import LosslessExtractor
 from sound_remover.processors.mastering import MasteringProcessor
 from sound_remover.ui.player_widget import AudioPreviewPlayer
@@ -89,15 +92,16 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(
-            "SoundRemover - 吹奏楽・発表会動画 ロスレス音声抽出＆ピンポイント声・ノイズ除去スタジオ"
+            "SoundRemover - 吹奏楽・発表会動画 ロスレス音声抽出＆ピンポイント声・風・ノイズ除去スタジオ"
         )
-        self.resize(1360, 840)
+        self.resize(1420, 860)
         self.setAcceptDrops(True)
         self.setStyleSheet(STUDIO_DARK_STYLESHEET)
 
         self.device_manager = DeviceManager()
         self.pipeline = AudioPipeline(device_manager=self.device_manager)
         self.session: Optional[AudioSession] = None
+        self.latest_diagnosis: Optional[AudioDiagnosisReport] = None
         self._worker: Optional[PipelineWorker] = None
 
         self._setup_ui()
@@ -110,7 +114,7 @@ class MainWindow(QMainWindow):
         root_layout.setContentsMargins(10, 10, 10, 10)
         root_layout.setSpacing(8)
 
-        # 1. 上部ツールバー（ファイル開く・完全ロスレス抽出・プリセット・演算デバイス選択）
+        # 1. 上部ツールバー（ファイル開く・完全ロスレス抽出・音響診断・プリセット・演算デバイス選択）
         top_bar = QHBoxLayout()
 
         self.btn_open_file = QPushButton("📂 動画・音声ファイルを開く...")
@@ -125,15 +129,21 @@ class MainWindow(QMainWindow):
         self.btn_lossless_extract.setEnabled(False)
         self.btn_lossless_extract.clicked.connect(self.on_direct_lossless_extract)
 
+        self.btn_diagnose_quick = QPushButton("🔍 周波数・風切り音自動診断")
+        self.btn_diagnose_quick.setObjectName("accentButton")
+        self.btn_diagnose_quick.setEnabled(False)
+        self.btn_diagnose_quick.clicked.connect(self.on_quick_diagnose_clicked)
+
         top_bar.addWidget(self.btn_open_file)
         top_bar.addWidget(self.btn_lossless_extract)
-        top_bar.addSpacing(16)
+        top_bar.addWidget(self.btn_diagnose_quick)
+        top_bar.addSpacing(12)
 
         lbl_preset = QLabel("🎵 プリセット:")
         self.combo_preset = QComboBox()
         self.combo_preset.addItems(
             [
-                "屋外ステージ標準（風切り音カット＋声除去＋低音補強＋音量最適化）",
+                "屋外ステージ標準（スマート風切り音除去＋声除去＋低音補強＋音量最適化）",
                 "屋内ホール・体育館標準（空調ホワイトノイズ除去＋こもり解消EQ＋音量最適化）",
                 "話し声ピンポイント除去のみ（他は100%無加工維持）",
                 "ホワイトノイズ・空調音除去のみ",
@@ -188,17 +198,18 @@ class MainWindow(QMainWindow):
 
         # 右ペイン（設定タブ＋実行・保存ボタン）
         right_pane = QWidget()
-        right_pane.setMinimumWidth(450)
-        right_pane.setMaximumWidth(540)
+        right_pane.setMinimumWidth(480)
+        right_pane.setMaximumWidth(580)
         right_layout = QVBoxLayout(right_pane)
         right_layout.setContentsMargins(4, 0, 0, 0)
         right_layout.setSpacing(8)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self._build_tab_vocal_removal(), "🗣 声・ピンポイント除去")
-        self.tabs.addTab(self._build_tab_noise_and_eq(), "🌬 ノイズ除去・屋外EQ")
+        self.tabs.addTab(self._build_tab_diagnostics(), "🔍 音響診断・推奨")
+        self.tabs.addTab(self._build_tab_vocal_removal(), "🗣 声・ピンポイント")
+        self.tabs.addTab(self._build_tab_noise_and_eq(), "🌬 風・ノイズ・EQ")
         self.tabs.addTab(self._build_tab_mastering(), "🎚 音量・マスタリング")
-        self.tabs.addTab(self._build_tab_chapters(), "✂️ 曲分割・一括出力")
+        self.tabs.addTab(self._build_tab_chapters(), "✂️ 曲分割・出力")
         right_layout.addWidget(self.tabs, stretch=1)
 
         # 下部アクションボタン（処理実行＆ファイル書き出し）
@@ -254,6 +265,63 @@ class MainWindow(QMainWindow):
         self.combo_device.addItem(f"自動選択 (推奨: {best.display_name})", "auto")
         for dev in devices:
             self.combo_device.addItem(dev.display_name, dev.device_id)
+
+    def _build_tab_diagnostics(self) -> QWidget:
+        """🔍 音響・周波数特性＆風切り音自動診断アシスタントタブ"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(6)
+
+        btn_row = QHBoxLayout()
+        self.btn_diag_full = QPushButton("🔄 トラック全体を診断")
+        self.btn_diag_sel = QPushButton("🎯 現在の選択範囲だけを診断")
+        self.btn_diag_full.clicked.connect(lambda: self.run_audio_diagnosis(use_selection=False))
+        self.btn_diag_sel.clicked.connect(lambda: self.run_audio_diagnosis(use_selection=True))
+        btn_row.addWidget(self.btn_diag_full)
+        btn_row.addWidget(self.btn_diag_sel)
+        layout.addLayout(btn_row)
+
+        # 1. 5帯域周波数バランス＆ステレオ相関
+        grp_bands = QGroupBox("📊 周波数帯域別エネルギー＆ステレオ位相相関 (L/R Corr)")
+        b_layout = QVBoxLayout(grp_bands)
+        self.list_diag_bands = QListWidget()
+        self.list_diag_bands.setMaximumHeight(135)
+        b_layout.addWidget(self.list_diag_bands)
+        layout.addWidget(grp_bands)
+
+        # 2. 検出された風切り音（マイク吹かれ）区間一覧
+        grp_wind = QGroupBox("🌪 検出された風切り音（マイク吹かれ）区間（ダブルクリックでその秒数へジャンプ）")
+        w_layout = QVBoxLayout(grp_wind)
+        self.lbl_wind_summary = QLabel("ファイルを開くと自動で風切り音や周波数バランスを診断します。")
+        self.lbl_wind_summary.setStyleSheet("color: #fbbf24; font-weight: bold;")
+        w_layout.addWidget(self.lbl_wind_summary)
+
+        self.list_diag_wind = QListWidget()
+        self.list_diag_wind.setMaximumHeight(125)
+        self.list_diag_wind.itemDoubleClicked.connect(self.on_wind_event_double_clicked)
+        w_layout.addWidget(self.list_diag_wind)
+
+        self.btn_add_wind_to_pinpoint = QPushButton("➕ 検出された風切り音区間をピンポイント除去リストへ一括追加")
+        self.btn_add_wind_to_pinpoint.clicked.connect(self.on_add_wind_events_to_pinpoint)
+        w_layout.addWidget(self.btn_add_wind_to_pinpoint)
+        layout.addWidget(grp_wind)
+
+        # 3. 診断アドバイス＆ワンクリック推奨設定反映
+        grp_rec = QGroupBox("💡 診断結果からのフィルタ設定アドバイス")
+        r_layout = QVBoxLayout(grp_rec)
+        self.txt_diag_recommendations = QTextEdit()
+        self.txt_diag_recommendations.setReadOnly(True)
+        self.txt_diag_recommendations.setStyleSheet("background-color: #14161b; border: 1px solid #2d323e;")
+        r_layout.addWidget(self.txt_diag_recommendations, stretch=1)
+
+        self.btn_apply_recommended = QPushButton("⚡ 診断結果の推奨フィルタ設定をワンクリックで反映する")
+        self.btn_apply_recommended.setObjectName("accentButton")
+        self.btn_apply_recommended.setEnabled(False)
+        self.btn_apply_recommended.clicked.connect(self.on_apply_recommended_diagnosis)
+        r_layout.addWidget(self.btn_apply_recommended)
+        layout.addWidget(grp_rec, stretch=1)
+
+        return tab
 
     def _build_tab_vocal_removal(self) -> QWidget:
         tab = QWidget()
@@ -328,8 +396,41 @@ class MainWindow(QMainWindow):
     def _build_tab_noise_and_eq(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        layout.setSpacing(6)
 
-        # 1. ホワイトノイズ・空調音除去
+        # 1. スマート風切り音除去（屋外マイク吹かれサプレッサー）
+        grp_wind = QGroupBox("🌪 スマート風切り音除去（屋外マイク吹かれ・ボフボフ音サプレッサー）")
+        wind_form = QFormLayout(grp_wind)
+
+        self.chk_wind_enable = QCheckBox(
+            "スマート風切り音除去を有効にする（チューバ・ベースの低音を保ち、風の乱流だけ除去）"
+        )
+        self.chk_wind_enable.setChecked(True)
+        wind_form.addRow(self.chk_wind_enable)
+
+        wind_str_row = QHBoxLayout()
+        self.slider_wind_strength = QSlider(Qt.Orientation.Horizontal)
+        self.slider_wind_strength.setRange(0, 100)
+        self.slider_wind_strength.setValue(85)
+        self.lbl_wind_strength_val = QLabel("85%")
+        self.lbl_wind_strength_val.setFixedWidth(45)
+        self.slider_wind_strength.valueChanged.connect(
+            lambda v: self.lbl_wind_strength_val.setText(f"{v}%")
+        )
+        wind_str_row.addWidget(self.slider_wind_strength)
+        wind_str_row.addWidget(self.lbl_wind_strength_val)
+        wind_form.addRow("風切り音抑制強度:", wind_str_row)
+
+        self.spin_wind_cutoff = QDoubleSpinBox()
+        self.spin_wind_cutoff.setRange(120.0, 360.0)
+        self.spin_wind_cutoff.setSingleStep(10.0)
+        self.spin_wind_cutoff.setValue(260.0)
+        self.spin_wind_cutoff.setSuffix(" Hz (風乱流監視・M/S抑制上限)")
+        wind_form.addRow("風乱流監視上限周波数:", self.spin_wind_cutoff)
+
+        layout.addWidget(grp_wind)
+
+        # 2. ホワイトノイズ・空調音除去
         grp_nr = QGroupBox("🌫 ホワイトノイズ・空調音除去 (Spectral Gating)")
         nr_form = QFormLayout(grp_nr)
 
@@ -366,11 +467,11 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(grp_nr)
 
-        # 2. 屋外風切り音ローカット＆吹奏楽4バンドEQ
-        grp_eq = QGroupBox("🎺 屋外風切り音ローカット＆吹奏楽向け4バンドEQ")
+        # 3. 屋外超低域ローカット＆吹奏楽4バンドEQ
+        grp_eq = QGroupBox("🎺 超低域ローカット＆吹奏楽向け4バンドEQ")
         eq_form = QFormLayout(grp_eq)
 
-        self.chk_hp_enable = QCheckBox("屋外の風切り音・足音振動ローカット (High-Pass) を有効にする")
+        self.chk_hp_enable = QCheckBox("超低域振動ローカット (High-Pass) を有効にする")
         self.chk_hp_enable.setChecked(True)
         eq_form.addRow(self.chk_hp_enable)
 
@@ -528,6 +629,9 @@ class MainWindow(QMainWindow):
             noise_profile_region=noise_prof,
             highpass_enabled=self.chk_hp_enable.isChecked(),
             highpass_cutoff_hz=float(self.spin_hp_cutoff.value()),
+            wind_reduction_enabled=self.chk_wind_enable.isChecked(),
+            wind_reduction_strength=self.slider_wind_strength.value() / 100.0,
+            wind_cutoff_hz=float(self.spin_wind_cutoff.value()),
             eq_enabled=self.chk_eq_enable.isChecked(),
             eq_low_db=float(self.spin_eq_low.value()),
             eq_low_mid_db=float(self.spin_eq_low_mid.value()),
@@ -551,6 +655,10 @@ class MainWindow(QMainWindow):
         self.chk_nr_enable.setChecked(cfg.noise_reduction_enabled)
         self.combo_nr_scope.setCurrentIndex(1 if cfg.noise_apply_only_regions else 0)
         self.slider_nr_strength.setValue(int(round(cfg.noise_reduction_strength * 100)))
+
+        self.chk_wind_enable.setChecked(cfg.wind_reduction_enabled)
+        self.slider_wind_strength.setValue(int(round(cfg.wind_reduction_strength * 100)))
+        self.spin_wind_cutoff.setValue(cfg.wind_cutoff_hz)
 
         self.chk_hp_enable.setChecked(cfg.highpass_enabled)
         self.spin_hp_cutoff.setValue(cfg.highpass_cutoff_hz)
@@ -624,14 +732,148 @@ class MainWindow(QMainWindow):
             self.lbl_noise_profile.setText("未登録（自動推定モード）")
 
             self.btn_lossless_extract.setEnabled(True)
+            self.btn_diagnose_quick.setEnabled(True)
             self.btn_run_pipeline.setEnabled(True)
             self.btn_export_audio.setEnabled(True)
+
+            # 自動的に音響・風切り音・周波数特性を診断して結果を表示する
+            self.run_audio_diagnosis(use_selection=False)
+
             self.progress_bar.setValue(100)
-            self.lbl_status.setText(f"読み込み完了: {path.name}")
+            self.lbl_status.setText(
+                f"読み込み＆自動音響診断が完了しました: {path.name} （右側の「🔍 音響診断・推奨」タブをご確認ください）"
+            )
         except Exception as exc:
             self.progress_bar.setValue(0)
             self.lbl_status.setText("読み込みエラー")
             QMessageBox.critical(self, "ファイル読み込みエラー", f"ファイルの読み込みに失敗しました:\n{exc}")
+
+    # --- 音響・周波数特性＆風切り音自動診断 ---
+    def on_quick_diagnose_clicked(self) -> None:
+        self.tabs.setCurrentIndex(0)
+        use_sel = self.waveform_widget.has_selection
+        self.run_audio_diagnosis(use_selection=use_sel)
+
+    def run_audio_diagnosis(self, use_selection: bool = False) -> None:
+        if not self.session:
+            return
+
+        sr = self.session.sample_rate
+        full_audio = self.session.original_audio
+        offset_sec = 0.0
+
+        if use_selection and self.waveform_widget.has_selection:
+            s_sec, e_sec = self.waveform_widget.get_selected_region()
+            s_idx = max(0, min(int(s_sec * sr), full_audio.shape[1]))
+            e_idx = max(s_idx, min(int(e_sec * sr), full_audio.shape[1]))
+            if e_idx - s_idx >= int(0.5 * sr):
+                target_audio = full_audio[:, s_idx:e_idx]
+                offset_sec = s_sec
+            else:
+                target_audio = full_audio
+        else:
+            target_audio = full_audio
+
+        report = AudioAnalyzer.analyze(
+            audio=target_audio,
+            sample_rate=sr,
+            base_config=self._collect_config_from_ui(),
+        )
+        # 選択範囲診断の場合はオフセット秒数を加算
+        if offset_sec > 0.0:
+            for ev in report.wind_events:
+                ev.start_sec += offset_sec
+                ev.end_sec += offset_sec
+            if report.suggested_noise_sample_region is not None:
+                ns, ne = report.suggested_noise_sample_region
+                report.suggested_noise_sample_region = (ns + offset_sec, ne + offset_sec)
+                report.recommended_config.noise_profile_region = report.suggested_noise_sample_region
+
+        self.latest_diagnosis = report
+        self._populate_diagnosis_ui(report, is_selection=(offset_sec > 0.0))
+
+    def _populate_diagnosis_ui(self, report: AudioDiagnosisReport, is_selection: bool = False) -> None:
+        self.list_diag_bands.clear()
+        for b in report.band_stats:
+            self.list_diag_bands.addItem(
+                f"{b.name}: {b.rms_db:5.1f} dB  |  L/R相関: {b.lr_correlation:+.2f}  ➔  {b.comment}"
+            )
+
+        scope_str = "【選択範囲の診断】" if is_selection else "【トラック全体の診断】"
+        self.lbl_wind_summary.setText(f"{scope_str} 風切り音（吹かれ）判定: {report.wind_severity_summary}")
+
+        self.list_diag_wind.clear()
+        if not report.wind_events:
+            self.list_diag_wind.addItem("✅ 風切り音（マイク吹かれ）が顕著な区間はありませんでした。")
+        else:
+            for idx, ev in enumerate(report.wind_events, start=1):
+                self.list_diag_wind.addItem(
+                    f"{idx:02d}. {format_time_mmss(ev.start_sec)} 〜 {format_time_mmss(ev.end_sec)} "
+                    f"[{ev.severity}] (風乱流レベル:{ev.peak_side_db:.1f}dB / 乱流比:{ev.max_side_mid_ratio:.2f})"
+                )
+
+        self.txt_diag_recommendations.setPlainText("\n\n".join(report.recommendations_text))
+        self.btn_apply_recommended.setEnabled(True)
+
+    def on_wind_event_double_clicked(self, item: QListWidgetItem) -> None:
+        if not self.latest_diagnosis or not self.latest_diagnosis.wind_events:
+            return
+        row = self.list_diag_wind.row(item)
+        if 0 <= row < len(self.latest_diagnosis.wind_events):
+            ev = self.latest_diagnosis.wind_events[row]
+            self.waveform_widget.set_selected_region(ev.start_sec, ev.end_sec)
+            self.player_widget.seek_to_sec(ev.start_sec)
+            self.lbl_status.setText(
+                f"🌪 風切り音検出区間 ({format_time_mmss(ev.start_sec)} 〜 {format_time_mmss(ev.end_sec)}) を選択しました。再生ボタンで確認できます。"
+            )
+
+    def on_add_wind_events_to_pinpoint(self) -> None:
+        if not self.session or not self.latest_diagnosis or not self.latest_diagnosis.wind_events:
+            QMessageBox.information(self, "風切り音区間なし", "追加できる風切り音検出区間がありません。")
+            return
+
+        added = 0
+        for ev in self.latest_diagnosis.wind_events:
+            self.session.pinpoint_regions.append(
+                TimeRegion(
+                    start_sec=ev.start_sec,
+                    end_sec=ev.end_sec,
+                    label=f"風切り音[{ev.severity}]",
+                )
+            )
+            added += 1
+
+        self._refresh_region_lists_and_overlays()
+        QMessageBox.information(
+            self,
+            "ピンポイント区間への追加完了",
+            f"検出された {added} 箇所の風切り音区間をピンポイント除去リストへ登録しました。",
+        )
+
+    def on_apply_recommended_diagnosis(self) -> None:
+        if not self.session or not self.latest_diagnosis:
+            return
+        rec = self.latest_diagnosis.recommended_config
+        self._apply_config_to_ui(rec)
+
+        if self.latest_diagnosis.suggested_noise_sample_region is not None:
+            ns, ne = self.latest_diagnosis.suggested_noise_sample_region
+            self.session.noise_sample_region = (ns, ne)
+            self.lbl_noise_profile.setText(f"自動検出 ({format_time_mmss(ns)} 〜 {format_time_mmss(ne)})")
+            self._refresh_region_lists_and_overlays()
+
+        self.tabs.setCurrentIndex(2)  # 「🌬 風・ノイズ・EQ」タブを表示して反映結果を見せる
+        self.lbl_status.setText("⚡ 音響診断に基づく推奨フィルタ設定（スマート風切り音除去・EQ・ノイズ見本）を反映しました！")
+        QMessageBox.information(
+            self,
+            "推奨設定を反映しました",
+            "音響・周波数特性の診断結果に基づき、\n"
+            "・スマート風切り音除去（M/S乱流サプレッサー）\n"
+            "・ローカット周波数＆吹奏楽4バンドEQ\n"
+            "・ホワイトノイズ見本区間\n"
+            "を最適値に設定しました！\n\n"
+            "右下の「✨ 音声加工を実行」ボタンを押して聴き比べてみてください。",
+        )
 
     def on_direct_lossless_extract(self) -> None:
         if not self.session:
@@ -707,9 +949,8 @@ class MainWindow(QMainWindow):
         )
         self.session.pinpoint_regions.append(reg)
         self._refresh_region_lists_and_overlays()
-        # ピンポイント区間を追加した際は自動的に「ピンポイント区間のみに適用」へ切り替えると親切
         self.combo_vocal_scope.setCurrentIndex(1)
-        self.tabs.setCurrentIndex(0)
+        self.tabs.setCurrentIndex(1)
         self.lbl_status.setText(
             f"ピンポイント除去区間 ({format_time_mmss(start_sec)} 〜 {format_time_mmss(end_sec)}) を追加しました。"
         )
@@ -752,7 +993,7 @@ class MainWindow(QMainWindow):
             f"学習済 ({format_time_mmss(start_sec)} 〜 {format_time_mmss(end_sec)})"
         )
         self._refresh_region_lists_and_overlays()
-        self.tabs.setCurrentIndex(1)
+        self.tabs.setCurrentIndex(2)
         self.lbl_status.setText(
             f"ホワイトノイズ見本区間 ({format_time_mmss(start_sec)} 〜 {format_time_mmss(end_sec)}) を登録しました。"
         )
@@ -790,7 +1031,7 @@ class MainWindow(QMainWindow):
         )
         self.session.song_chapters.append(ch)
         self._refresh_region_lists_and_overlays()
-        self.tabs.setCurrentIndex(3)
+        self.tabs.setCurrentIndex(4)
 
     def on_delete_selected_chapter(self) -> None:
         if not self.session:

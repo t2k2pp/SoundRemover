@@ -86,15 +86,18 @@ class AudioPipeline:
                 progress_callback=progress_callback,
             )
 
-        # Step 3: 屋外風切り音ローカット＆吹奏楽4バンドEQ
-        if cfg.highpass_enabled or cfg.eq_enabled:
+        # Step 3: 屋外風切り音ローカット・スマート風切り音除去＆吹奏楽4バンドEQ
+        if cfg.highpass_enabled or cfg.wind_reduction_enabled or cfg.eq_enabled:
             if progress_callback:
-                progress_callback(78, "風切り音ローカットフィルタ＆吹奏楽イコライザーを適用中...")
+                progress_callback(78, "スマート風切り音除去・ローカット＆吹奏楽イコライザーを適用中...")
             audio = WindBandFilter.process(
                 audio=audio,
                 sample_rate=sr,
                 highpass_enabled=cfg.highpass_enabled,
                 highpass_cutoff_hz=cfg.highpass_cutoff_hz,
+                wind_reduction_enabled=cfg.wind_reduction_enabled,
+                wind_reduction_strength=cfg.wind_reduction_strength,
+                wind_cutoff_hz=cfg.wind_cutoff_hz,
                 eq_enabled=cfg.eq_enabled,
                 low_db=cfg.eq_low_db,
                 low_mid_db=cfg.eq_low_mid_db,

@@ -68,9 +68,12 @@ class ProcessingConfig:
     noise_stationary_mode: bool = True      # 定常ノイズ除去モード
     noise_profile_region: Optional[Tuple[float, float]] = None  # ノイズ見本区間 (start_sec, end_sec)
 
-    # 3. 屋外風切り音ローカット＆吹奏楽向け4バンドEQ設定
+    # 3. 屋外風切り音ローカット・スマート風切り音除去＆吹奏楽向け4バンドEQ設定
     highpass_enabled: bool = True
     highpass_cutoff_hz: float = 45.0        # 風切り音・空調振動カット (30Hz〜150Hz)
+    wind_reduction_enabled: bool = True     # スマート風切り音除去 (M/S乱流カット＋動的吹かれサプレッサー)
+    wind_reduction_strength: float = 0.85   # 風切り音抑制の強度 (0.0 〜 1.0)
+    wind_cutoff_hz: float = 260.0           # 風切り音乱流監視・M/S抑制の上限周波数 (150Hz〜350Hz)
     eq_enabled: bool = False
     eq_low_db: float = 0.0                  # 80Hz Low-Shelf (チューバ・低音の厚み)
     eq_low_mid_db: float = 0.0              # 280Hz Peaking (体育館・ホールのこもり軽減)
@@ -98,6 +101,9 @@ class ProcessingConfig:
             noise_reduction_strength=0.70,
             highpass_enabled=True,
             highpass_cutoff_hz=55.0,
+            wind_reduction_enabled=True,
+            wind_reduction_strength=0.85,
+            wind_cutoff_hz=260.0,
             eq_enabled=True,
             eq_low_db=2.0,
             eq_low_mid_db=-1.0,
@@ -121,6 +127,7 @@ class ProcessingConfig:
             noise_reduction_strength=0.80,
             highpass_enabled=True,
             highpass_cutoff_hz=40.0,
+            wind_reduction_enabled=False,
             eq_enabled=True,
             eq_low_db=0.5,
             eq_low_mid_db=-2.5,
@@ -142,6 +149,7 @@ class ProcessingConfig:
             vocal_band_protection=True,
             noise_reduction_enabled=False,
             highpass_enabled=False,
+            wind_reduction_enabled=False,
             eq_enabled=False,
             loudness_norm_enabled=False,
             limiter_enabled=False,
@@ -157,6 +165,7 @@ class ProcessingConfig:
             noise_reduction_strength=0.80,
             highpass_enabled=True,
             highpass_cutoff_hz=40.0,
+            wind_reduction_enabled=False,
             eq_enabled=False,
             loudness_norm_enabled=False,
             limiter_enabled=False,
