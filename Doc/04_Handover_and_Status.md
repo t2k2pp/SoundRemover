@@ -1,6 +1,6 @@
 # SoundRemover 作業引き継ぎ書 (Handover Document)
 
-最終更新: 2026-10-18 (ToDo 2 完了 / ToDo 3 着手前)
+最終更新: 2026-10-18 (ToDo 3 完了 / ToDo 4 着手前)
 
 ---
 
@@ -28,32 +28,26 @@
 
 ### 完了済み
 - **[完了] ToDo 1: 設計書およびToDoリストの作成・初回Push** (Commit: `b0e5f7c`)
-  - `Doc/01_Architecture_and_Philosophy.md` (全体思想・アーキテクチャ設計)
-  - `Doc/02_Audio_Processing_Design.md` (音声処理・AIエンジン詳細設計)
-  - `Doc/03_UI_and_Distribution_Design.md` (GUI画面・マルチ環境配布設計)
-  - `ToDo.md`, `.gitignore`
-- **[完了] ToDo 2: プロジェクト基盤・マルチGPUデバイス管理・FFmpeg自動解決・ロスレス音声抽出エンジンの実装**
-  - `pyproject.toml`, `uv.lock`, `.venv` (Python 3.11.13 + PyTorch 2.5.1+cu124, Demucs 4.1.0, PySide6 6.12.0, static-ffmpeg 3.0 構築済)
-  - `README.md`
-  - `src/sound_remover/core/device_manager.py` (CUDA / ROCm / MPS / DirectML / CPU 自動検出・切替)
-  - `src/sound_remover/core/ffmpeg_manager.py` (システムFFmpeg / static-ffmpeg / imageio-ffmpeg 自動解決)
-  - `src/sound_remover/core/audio_data.py` (TimeRegion, SongChapter, ProcessingConfig, AudioSession, 吹奏楽プリセット4種)
-  - `src/sound_remover/processors/extractor.py` (ストリームコピー抽出 `ffmpeg -vn -acodec copy`、WAV24/16・FLAC・M4A・MP3 入出力)
+  - `Doc/01_Architecture_and_Philosophy.md`, `Doc/02_Audio_Processing_Design.md`, `Doc/03_UI_and_Distribution_Design.md`, `ToDo.md`, `.gitignore`
+- **[完了] ToDo 2: プロジェクト基盤・マルチGPUデバイス管理・FFmpeg自動解決・ロスレス音声抽出エンジンの実装** (Commit: `fea7257`)
+  - `pyproject.toml`, `uv.lock`, `.venv`, `README.md`
+  - `src/sound_remover/core/device_manager.py`, `src/sound_remover/core/ffmpeg_manager.py`, `src/sound_remover/core/audio_data.py`
+  - `src/sound_remover/processors/extractor.py`
+- **[完了] ToDo 3: 音声加工・AI処理エンジン群の実装**
+  - `src/sound_remover/processors/vocal_remover.py`: Demucs (`htdemucs`) 声成分抽出、残差引き算 (`X - αV`)、楽器保護帯域制限 (110Hz〜6500Hz)、ピンポイント区間適用＋コサインクロスフェード
+  - `src/sound_remover/processors/noise_reducer.py`: スペクトルゲーティング (`noisereduce`)、ノイズ見本区間からのプロファイル学習機能、ミュージカルノイズ防止平滑化
+  - `src/sound_remover/processors/eq_filter.py`: 屋外風切り音ローカットフィルタ (30〜150Hz) ＋ 吹奏楽4バンドEQ (80Hz, 280Hz, 2.5kHz, 8kHz)
+  - `src/sound_remover/processors/mastering.py`: ITU-R BS.1770-4 ラウドネスノーマライズ (`pyloudnorm`) ＋ ルックアヘッド・ピークリミッター ＋ 曲分割・S字フェードイン/アウト
+  - `src/sound_remover/core/pipeline.py`: 全プロセッサを統括する非破壊オーディオ処理パイプライン＆チャプター一括書き出し
 
 ### 次に実施する作業
-- **[次ステップ] ToDo 3: 音声加工・AI処理エンジン群の実装**
+- **[次ステップ] ToDo 4: デスクトップGUI (`PySide6` + `PyQtGraph`) の実装**
 
 ---
 
 ## 4. 残りの作業（再開時に実施すること）
 
-1. **ToDo 3: 音声加工・AI処理エンジン群の実装とPush**
-   - `src/sound_remover/processors/vocal_remover.py`: Demucs (`htdemucs`) による声成分分離・残差引き算 (`X - αV`)・楽器保護帯域制限 (110Hz〜6500Hz)・ピンポイントリージョン適用＋コサインクロスフェード
-   - `src/sound_remover/processors/noise_reducer.py`: `noisereduce` によるホワイトノイズ除去・ノイズ見本区間からのプロファイル学習機能
-   - `src/sound_remover/processors/eq_filter.py`: 屋外風切り音ハイパスフィルタ＋吹奏楽4バンドEQ（80Hz, 280Hz, 2.5kHz, 8kHz）
-   - `src/sound_remover/processors/mastering.py`: `pyloudnorm` ラウドネスノーマライズ (LUFS) ＋ ソフトニー・ピークリミッター ＋ 曲分割・フェードイン/アウト書き出し
-   - `src/sound_remover/core/pipeline.py`: 全プロセッサを統括する非破壊オーディオ処理パイプライン
-3. **ToDo 4: デスクトップGUI (`PySide6` + `PyQtGraph`) の実装とPush**
+1. **ToDo 4: デスクトップGUI (`PySide6` + `PyQtGraph`) の実装とPush**
    - `src/sound_remover/ui/theme.py`
    - `src/sound_remover/ui/waveform_widget.py` (波形表示・範囲選択・ピンポイント区間登録・ノイズ見本登録・曲分割登録)
    - `src/sound_remover/ui/player_widget.py` (Original / Processed ワンクリックA/B聴き比べ再生プレイヤー)

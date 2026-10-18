@@ -19,12 +19,12 @@
   - [x] `src/sound_remover/core/audio_data.py`（音声バッファ、ピンポイント適用リージョン、曲分割マーカー管理）の実装
   - [x] `src/sound_remover/processors/extractor.py`（動画からの無劣化ストリームコピー抽出 `ffmpeg -vn -acodec copy`、WAV/FLAC抽出、高品位float32読み込み・保存）の実装
 
-- [ ] **ToDo 3: 音声加工・AI処理エンジン群（AIピンポイント声除去・ホワイトノイズ除去・屋外風EQ・吹奏楽マスタリング・非破壊パイプライン）の実装**
-  - [ ] `src/sound_remover/processors/vocal_remover.py`（Demucsによる声成分抽出、残差引き算方式、楽器保護帯域制限、特定時間帯のみのピンポイント適用＋クロスフェード合成）の実装
-  - [ ] `src/sound_remover/processors/noise_reducer.py`（スペクトルゲーティングによるホワイトノイズ除去、ノイズ見本区間からのプロファイル学習機能）の実装
-  - [ ] `src/sound_remover/processors/eq_filter.py`（屋外風切り音ローカットフィルタ、吹奏楽向け4バンドEQ）の実装
-  - [ ] `src/sound_remover/processors/mastering.py`（ラウドネスノーマライズ LUFS、音割れ防止ピークリミッター、曲分割＆フェードイン・アウト書き出し）の実装
-  - [ ] `src/sound_remover/core/pipeline.py`（各プロセッサを統合し、全体適用およびピンポイント区間適用を行う非破壊パイプライン）の実装
+- [x] **ToDo 3: 音声加工・AI処理エンジン群（AIピンポイント声除去・ホワイトノイズ除去・屋外風EQ・吹奏楽マスタリング・非破壊パイプライン）の実装**
+  - [x] `src/sound_remover/processors/vocal_remover.py`（Demucsによる声成分抽出、残差引き算方式、楽器保護帯域制限、特定時間帯のみのピンポイント適用＋クロスフェード合成）の実装
+  - [x] `src/sound_remover/processors/noise_reducer.py`（スペクトルゲーティングによるホワイトノイズ除去、ノイズ見本区間からのプロファイル学習機能）の実装
+  - [x] `src/sound_remover/processors/eq_filter.py`（屋外風切り音ローカットフィルタ、吹奏楽向け4バンドEQ）の実装
+  - [x] `src/sound_remover/processors/mastering.py`（ラウドネスノーマライズ LUFS、音割れ防止ピークリミッター、曲分割＆フェードイン・アウト書き出し）の実装
+  - [x] `src/sound_remover/core/pipeline.py`（各プロセッサを統合し、全体適用およびピンポイント区間適用を行う非破壊パイプライン）の実装
 
 - [ ] **ToDo 4: デスクトップGUI（波形ビューア・範囲選択・A/B聴き比べプレイヤー・各種設定タブ・プリセット）の実装**
   - [ ] `src/sound_remover/ui/theme.py`（視認性の高いダークスタジオテーマ）の実装
