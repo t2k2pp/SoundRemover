@@ -1,27 +1,28 @@
 @echo off
-chcp 65001 > nul
-title SoundRemover - 吹奏楽・発表会動画 音声抽出＆ノイズ除去スタジオ
+setlocal
+title SoundRemover Studio
 
 cd /d "%~dp0"
 
 if exist ".venv\Scripts\python.exe" (
-    echo [SoundRemover] 仮想環境からアプリを起動しています...
+    echo [SoundRemover] Starting application from .venv ...
     ".venv\Scripts\python.exe" -m sound_remover.main %*
-    goto :eof
+    exit /b %errorlevel%
 )
 
 where uv >nul 2>nul
 if %errorlevel% equ 0 (
-    echo [SoundRemover] uv で環境を準備して起動しています...
+    echo [SoundRemover] Starting application via uv ...
     uv run sound-remover %*
-    goto :eof
+    exit /b %errorlevel%
 )
 
 if exist "%USERPROFILE%\.local\bin\uv.exe" (
-    echo [SoundRemover] uv で環境を準備して起動しています...
+    echo [SoundRemover] Starting application via user uv ...
     "%USERPROFILE%\.local\bin\uv.exe" run sound-remover %*
-    goto :eof
+    exit /b %errorlevel%
 )
 
-echo [エラー] Python仮想環境 (.venv) または uv が見つかりませんでした。
+echo [Error] Python virtual environment (.venv) or uv was not found.
 pause
+exit /b 1

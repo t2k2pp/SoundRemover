@@ -1,8 +1,13 @@
 """
-マルチGPU・CPUデバイス検出・切替ロジックの単体テスト (`test_device_manager.py`)
+マルチGPU・CPUデバイス検出・切替ロジックおよび起動スクリプトの単体テスト (`test_device_manager.py`)
 """
 
 from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 from sound_remover.core.device_manager import DeviceManager
 from sound_remover.core.ffmpeg_manager import FFmpegManager
@@ -34,3 +39,27 @@ def test_ffmpeg_manager_resolves_binary() -> None:
     ffmpeg_path, _ = FFmpegManager.ensure_ffmpeg()
     assert ffmpeg_path is not None
     assert len(ffmpeg_path) > 0
+
+
+def test_run_windows_bat_execution() -> None:
+    """Windowsバッチファイル (run_windows.bat) が文字化けや構文エラーなく正常実行できることを検証"""
+    if sys.platform != "win32":
+        return
+
+    bat_path = Path(__file__).resolve().parent.parent / "run_windows.bat"
+    assert bat_path.exists()
+
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+
+    res = subprocess.run(
+        ["cmd.exe", "/c", str(bat_path), "--check"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+        check=False,
+    )
+    assert res.returncode == 0, f"run_windows.bat failed:\nSTDOUT: {res.stdout}\nSTDERR: {res.stderr}"
+    assert "Self-check OK" in res.stdout

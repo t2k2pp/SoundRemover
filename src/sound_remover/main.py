@@ -21,16 +21,27 @@ def main() -> int:
     except Exception as exc:
         print(f"[Warning] FFmpeg initialization warning: {exc}", file=sys.stderr)
 
-    app = QApplication(sys.argv)
+    check_only = "--check" in sys.argv
+    args = [a for a in sys.argv if a != "--check"]
+
+    app = QApplication(args)
     app.setApplicationName("SoundRemover")
     app.setOrganizationName("WindBandAudioTools")
 
     window = MainWindow()
+    if check_only:
+        devs = [d.device_id for d in window.device_manager.available_devices]
+        print(f"[SoundRemover] Self-check OK. Available devices: {devs}")
+        window.close()
+        return 0
+
     window.show()
+    window.raise_()
+    window.activateWindow()
 
     # コマンドライン引数で動画・音声ファイルが渡された場合は自動で開く
-    if len(sys.argv) > 1:
-        arg_path = Path(sys.argv[1])
+    if len(args) > 1:
+        arg_path = Path(args[1])
         if arg_path.exists() and arg_path.is_file():
             window.load_media_file(arg_path)
 

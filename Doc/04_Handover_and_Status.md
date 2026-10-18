@@ -38,9 +38,9 @@
 - **[完了] ToDo 4: デスクトップGUI (`PySide6` + `PyQtGraph`) の実装** (Commit: `fbe66bd`)
   - `src/sound_remover/ui/theme.py`, `src/sound_remover/ui/waveform_widget.py`, `src/sound_remover/ui/player_widget.py`, `src/sound_remover/ui/main_window.py`, `src/sound_remover/main.py`
 - **[完了] ToDo 5: 自動テスト・サンプル検証用音源生成スクリプト・起動スクリプト整備と最終動作確認**
-  - `tests/test_device_manager.py`, `tests/test_processors.py` (`pytest` 全7テストPASS確認済)
+  - `tests/test_device_manager.py`, `tests/test_processors.py` (`pytest` 全8テストPASS確認：`run_windows.bat --check` の実起動テスト含む)
   - `scripts/generate_sample_video.py` (屋外吹奏楽模擬サンプル動画生成スクリプト)
-  - `run_windows.bat`, `run_unix.sh` (ワンクリック起動スクリプト)
+  - `run_windows.bat`, `run_unix.sh` (ワンクリック起動スクリプト：`cmd.exe` のCP932文字化け・改行ズレ防止のため純ASCII化済)
 
 ---
 
