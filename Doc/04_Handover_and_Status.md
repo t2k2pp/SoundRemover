@@ -1,6 +1,6 @@
 # SoundRemover 作業引き継ぎ書 (Handover Document)
 
-最終更新: 2026-10-18 (ToDo 4 完了 / ToDo 5 着手前)
+最終更新: 2026-10-18 (全ToDo 1〜5 実装・テスト完了)
 
 ---
 
@@ -24,7 +24,7 @@
 
 ---
 
-## 3. 現在の進捗状況
+## 3. 現在の進捗状況（全基本実装完了）
 
 ### 完了済み
 - **[完了] ToDo 1: 設計書およびToDoリストの作成・初回Push** (Commit: `b0e5f7c`)
@@ -35,29 +35,20 @@
   - `src/sound_remover/processors/extractor.py`
 - **[完了] ToDo 3: 音声加工・AI処理エンジン群の実装** (Commit: `d6aefd3`)
   - `src/sound_remover/processors/vocal_remover.py`, `src/sound_remover/processors/noise_reducer.py`, `src/sound_remover/processors/eq_filter.py`, `src/sound_remover/processors/mastering.py`, `src/sound_remover/core/pipeline.py`
-- **[完了] ToDo 4: デスクトップGUI (`PySide6` + `PyQtGraph`) の実装**
-  - `src/sound_remover/ui/theme.py`
-  - `src/sound_remover/ui/waveform_widget.py` (波形表示・範囲選択・ピンポイント区間登録・ノイズ見本登録・曲分割登録)
-  - `src/sound_remover/ui/player_widget.py` (Original / Processed ワンクリックA/B聴き比べ再生プレイヤー)
-  - `src/sound_remover/ui/main_window.py` および `src/sound_remover/main.py`
-
-### 次に実施する作業
-- **[次ステップ] ToDo 5: 自動テスト・サンプル検証用音源生成スクリプト・起動スクリプト整備と最終動作確認**
+- **[完了] ToDo 4: デスクトップGUI (`PySide6` + `PyQtGraph`) の実装** (Commit: `fbe66bd`)
+  - `src/sound_remover/ui/theme.py`, `src/sound_remover/ui/waveform_widget.py`, `src/sound_remover/ui/player_widget.py`, `src/sound_remover/ui/main_window.py`, `src/sound_remover/main.py`
+- **[完了] ToDo 5: 自動テスト・サンプル検証用音源生成スクリプト・起動スクリプト整備と最終動作確認**
+  - `tests/test_device_manager.py`, `tests/test_processors.py` (`pytest` 全7テストPASS確認済)
+  - `scripts/generate_sample_video.py` (屋外吹奏楽模擬サンプル動画生成スクリプト)
+  - `run_windows.bat`, `run_unix.sh` (ワンクリック起動スクリプト)
 
 ---
 
-## 4. 残りの作業（再開時に実施すること）
+## 4. 今後の拡張・実サンプル動画での調整時の引き継ぎ事項
 
-1. **ToDo 5: 自動テスト・サンプル検証・起動スクリプト整備と最終Push**
-   - `tests/test_device_manager.py`, `tests/test_processors.py` の作成と `uv run pytest` による全テスト通過確認
-   - `run_windows.bat`, `run_unix.sh` の作成と動作確認
-
----
-
-## 5. 作業再開時の確認コマンド
-作業を再開する際は、以下のコマンドで状態を確認してください：
-```powershell
-git status
-git log -n 3 --oneline
-& "C:\Users\osia3\.local\bin\uv.exe" run python -c "import torch; print('CUDA:', torch.cuda.is_available())"
-```
+1. **実物の吹奏楽動画サンプルでのチューニング**
+   - ユーザーの実撮影動画サンプルを用いて、声の除去強度（デフォルト85%）、楽器保護帯域（現在 `110Hz〜6500Hz`）、および屋外ステージ用ローカット周波数を微調整する場合は、`src/sound_remover/core/audio_data.py` のプリセット値または `src/sound_remover/processors/vocal_remover.py` の `_bandpass_vocal_stem` を調整する。
+2. **アプリの起動・テスト実行コマンド**
+   - GUI起動 (Windows): `run_windows.bat` をダブルクリック、または `& "C:\Users\osia3\.local\bin\uv.exe" run sound-remover`
+   - テスト実行: `& "C:\Users\osia3\.local\bin\uv.exe" run pytest -v`
+   - サンプル動画生成: `& "C:\Users\osia3\.local\bin\uv.exe" run python scripts/generate_sample_video.py`

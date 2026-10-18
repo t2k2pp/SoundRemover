@@ -48,8 +48,8 @@ class SpectralNoiseReducer:
             y_noise=noise_clip,
             prop_decrease=prop_decrease,
             n_fft=n_fft,
-            freq_mask_smooth_hz=500,
-            time_mask_smooth_ms=50,
+            freq_mask_smooth_hz=100,
+            time_mask_smooth_ms=30,
             n_jobs=1,
         )
         return np.asarray(cleaned, dtype=np.float32)

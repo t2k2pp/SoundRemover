@@ -32,7 +32,7 @@
   - [x] `src/sound_remover/ui/player_widget.py`（Original / Processed を再生位置を維持したままワンクリックで聴き比べできるオーディオプレイヤー、ループ再生）の実装
   - [x] `src/sound_remover/ui/main_window.py` および `src/sound_remover/main.py`（全機能を統合したメインウィンドウ、非同期ワーカースレッド処理、プリセット切替）の実装
 
-- [ ] **ToDo 5: 自動テスト・サンプル検証用音源生成スクリプト・起動スクリプト・READMEの整備と最終動作確認**
-  - [ ] `tests/test_device_manager.py` および `tests/test_processors.py`（ロスレス抽出、声除去、ホワイトノイズ除去、EQ、マスタリング、曲分割の単体・結合テスト）の作成と全テスト実行
-  - [ ] 吹奏楽模擬テスト動画/音声生成スクリプトによる一連の動作確認とGUI起動確認
-  - [ ] `run_windows.bat`、`run_unix.sh`、`README.md`（他の保護者への配布手順・環境別セットアップ手順含む）の作成と最終Push
+- [x] **ToDo 5: 自動テスト・サンプル検証用音源生成スクリプト・起動スクリプト・READMEの整備と最終動作確認**
+  - [x] `tests/test_device_manager.py` および `tests/test_processors.py`（ロスレス抽出、声除去、ホワイトノイズ除去、EQ、マスタリング、曲分割の単体・結合テスト）の作成と全テスト実行
+  - [x] 吹奏楽模擬テスト動画/音声生成スクリプトによる一連の動作確認とGUI起動確認
+  - [x] `run_windows.bat`、`run_unix.sh`、`README.md`（他の保護者への配布手順・環境別セットアップ手順含む）の作成と最終Push
