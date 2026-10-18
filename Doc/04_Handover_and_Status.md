@@ -1,6 +1,6 @@
 # SoundRemover 作業引き継ぎ書 (Handover Document)
 
-最終更新: 2026-10-18 (全ToDo 1〜7 実装・テスト完了)
+最終更新: 2026-10-18 (全ToDo 1〜8 実装・テスト完了)
 
 ---
 
@@ -44,11 +44,16 @@
 - **[完了] ToDo 6: 波形ビューアの範囲選択UI・操作性の改善** (Commit: `23da63e`)
   - `src/sound_remover/ui/waveform_widget.py`: ファイル読み込み直後を「未選択」状態に変更、波形上のマウス左ドラッグによる直接範囲選択・変更、単発クリックでの再生シーク、再生位置からの `[開始点(In)]` / `[終了点(Out)]` ボタン、秒数スピンボックス、選択解除ボタンを実装
   - `tests/test_ui_waveform.py`: 波形範囲選択・未選択初期化の自動テスト追加
-- **[完了] ToDo 7: スマート風切り音除去（屋外マイク吹かれサプレッサー）＆周波数特性・ノイズ自動診断アシスタントの実装**
+- **[完了] ToDo 7: スマート風切り音除去（屋外マイク吹かれサプレッサー）＆周波数特性・ノイズ自動診断アシスタントの実装** (Commit: `48ad432`)
   - `src/sound_remover/processors/analyzer.py`: 5帯域周波数バランス＆L/Rステレオ相関解析、風切り音（マイク吹かれ）発生区間の自動スキャン、静寂ノイズ見本区間の自動検出、推奨設定（`recommended_config`）と解説文の自動生成
   - `src/sound_remover/processors/eq_filter.py`: `suppress_wind_noise`（低域M/S Side乱流常時カット＋風検知連動・動的Mid吹かれ抑制）を実装し、チューバ・ベースの同相低音を保ったまま風切り音だけを狙い撃ちで除去
   - `src/sound_remover/ui/main_window.py`: 「🔍 音響診断・推奨」タブ、風切り音区間リストからのダブルクリック・ジャンプ、ワンクリック推奨設定反映ボタンを追加
-  - `tests/test_analyzer_and_wind.py`: スマート風切り音除去および音響診断の自動テスト追加（全11テストPASS）
+  - `tests/test_analyzer_and_wind.py`: スマート風切り音除去および音響診断の自動テスト追加
+- **[完了] ToDo 8: 人の声・咳払い・近接雑音の2段階自動検出＆ワンクリック除去区間登録機能の実装**
+  - `src/sound_remover/processors/analyzer.py`: `VoiceCandidateEvent`、高速音響・空間特徴スキャン (`scan_voice_candidates_fast`: 300〜3800Hz 声帯域の近接ステレオ非対称性＋20msサブフレーム音節変調度CV＋曲間静寂時の声帯域突出検出)、および AI Demucs ボーカルステム精密スキャン (`scan_voice_candidates_ai`) を実装
+  - `src/sound_remover/processors/vocal_remover.py`: `DemucsVocalRemover.scan_vocal_events` を追加
+  - `src/sound_remover/ui/main_window.py`: `VoiceScanWorker` (非同期AI声スキャン)、診断タブ内の「🗣 検出された人の声・咳払い・近接雑音候補」リスト（ダブルクリックで波形選択＆試聴ジャンプ、選択追加・全一括追加ボタン）を統合
+  - `tests/test_analyzer_and_wind.py`: 高速声候補スキャンおよびAI声スキャンの単体テストを追加
 
 ---
 
@@ -60,3 +65,4 @@
    - GUI起動 (Windows): `run_windows.bat` をダブルクリック、または `& "C:\Users\osia3\.local\bin\uv.exe" run sound-remover`
    - テスト実行: `& "C:\Users\osia3\.local\bin\uv.exe" run pytest -v`
    - サンプル動画生成: `& "C:\Users\osia3\.local\bin\uv.exe" run python scripts/generate_sample_video.py`
+

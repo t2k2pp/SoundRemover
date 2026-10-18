@@ -308,3 +308,36 @@ class DemucsVocalRemover:
             vocal_stem = self._bandpass_vocal_stem(vocal_stem, sample_rate)
 
         return (audio - alpha * vocal_stem).astype(np.float32)
+
+    def scan_vocal_events(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        device: ComputeDevice,
+        progress_callback: Optional[Callable[[int, str], None]] = None,
+    ):
+        """
+        AI (Demucs) で声成分 (vocal_stem) を推論し、`AudioAnalyzer.scan_voice_candidates_ai`
+        によって「何分何秒〜何分何秒に人の声・話し声・掛け声が入っているか」を自動検出して返す。
+        """
+        from sound_remover.processors.analyzer import AudioAnalyzer
+
+        if progress_callback:
+            progress_callback(20, f"AI ({self.model_name}) で人の声・話し声成分をスキャン中 ({device.backend_type})...")
+
+        vocal_stem = self._infer_vocal_stem(audio, sample_rate, device)
+
+        if progress_callback:
+            progress_callback(80, "声成分のエネルギー推移と音節パターンから混入時間帯を特定中...")
+
+        events = AudioAnalyzer.scan_voice_candidates_ai(
+            audio=audio,
+            sample_rate=sample_rate,
+            vocal_stem=vocal_stem,
+        )
+
+        if progress_callback:
+            progress_callback(100, f"AI声スキャン完了（{len(events)} 箇所の声候補区間を検出）")
+
+        return events
+

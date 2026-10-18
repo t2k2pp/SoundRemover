@@ -48,3 +48,11 @@
   - [x] `src/sound_remover/processors/eq_filter.py` および `audio_data.py`, `pipeline.py` への「スマート風切り音除去（低域M/S Side乱流カット＋風検知連動・動的Mid吹かれ抑制）」の追加
   - [x] `src/sound_remover/ui/main_window.py` への「🔍 音響診断・推奨設定」タブ（帯域特性表示、風切り音区間ジャンプ、ワンクリック推奨設定反映）およびスマート風切り音除去UIの統合
   - [x] 単体テストおよび実ファイル（`01_曲目_01.m4a`）での風切り音除去検証・引き継ぎ書更新・リモートリポジトリへのPush
+
+- [x] **ToDo 8: 人の声・咳払い・近接雑音の自動検出（高速空間・音節スキャン＋AI Demucs声成分スキャン）＆ピンポイント登録機能の実装**
+  - [x] `Doc/02_Audio_Processing_Design.md` および `Doc/03_UI_and_Distribution_Design.md` への声・近接雑音自動検出アルゴリズム設計の追記
+  - [x] `src/sound_remover/processors/analyzer.py` への高速声・咳払い候補スキャン（フォルマント帯域M/S近接非対称性＋3〜9Hz音節包絡線変調＋静寂時声突出検出）およびAI（Demucs）声成分精密スキャン機能の実装
+  - [x] `src/sound_remover/ui/main_window.py` への「🗣 検出された声・咳払い候補リスト（ダブルクリック試聴ジャンプ・AI精密スキャン・ピンポイント除去リストへの追加）」の統合
+  - [x] 単体テストおよび実録音データでの検証・引き継ぎ書更新・リモートリポジトリへのPush
+
+

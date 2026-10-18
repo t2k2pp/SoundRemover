@@ -47,7 +47,11 @@ from sound_remover.core.audio_data import (
 )
 from sound_remover.core.device_manager import DeviceManager
 from sound_remover.core.pipeline import AudioPipeline
-from sound_remover.processors.analyzer import AudioAnalyzer, AudioDiagnosisReport
+from sound_remover.processors.analyzer import (
+    AudioAnalyzer,
+    AudioDiagnosisReport,
+    VoiceCandidateEvent,
+)
 from sound_remover.processors.extractor import LosslessExtractor
 from sound_remover.processors.mastering import MasteringProcessor
 from sound_remover.ui.player_widget import AudioPreviewPlayer
@@ -86,6 +90,41 @@ class PipelineWorker(QThread):
             self.failed_error.emit(str(exc))
 
 
+class VoiceScanWorker(QThread):
+    """バックグラウンドで AI (Demucs) による人の声・話し声混入区間スキャンを実行するワーカースレッド"""
+
+    progress_updated = Signal(int, str)
+    finished_success = Signal(object, float)  # (List[VoiceCandidateEvent], offset_sec)
+    failed_error = Signal(str)
+
+    def __init__(
+        self,
+        pipeline: AudioPipeline,
+        audio: np.ndarray,
+        sample_rate: int,
+        offset_sec: float = 0.0,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.pipeline = pipeline
+        self.audio = audio
+        self.sample_rate = sample_rate
+        self.offset_sec = offset_sec
+
+    def run(self) -> None:
+        try:
+            dev = self.pipeline.device_manager.get_selected_device()
+            events = self.pipeline.vocal_remover.scan_vocal_events(
+                audio=self.audio,
+                sample_rate=self.sample_rate,
+                device=dev,
+                progress_callback=lambda pct, msg: self.progress_updated.emit(pct, msg),
+            )
+            self.finished_success.emit(events, self.offset_sec)
+        except Exception as exc:
+            self.failed_error.emit(str(exc))
+
+
 class MainWindow(QMainWindow):
     """SoundRemover メインアプリケーションウィンドウ"""
 
@@ -94,7 +133,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(
             "SoundRemover - 吹奏楽・発表会動画 ロスレス音声抽出＆ピンポイント声・風・ノイズ除去スタジオ"
         )
-        self.resize(1420, 860)
+        self.resize(1420, 880)
         self.setAcceptDrops(True)
         self.setStyleSheet(STUDIO_DARK_STYLESHEET)
 
@@ -103,9 +142,11 @@ class MainWindow(QMainWindow):
         self.session: Optional[AudioSession] = None
         self.latest_diagnosis: Optional[AudioDiagnosisReport] = None
         self._worker: Optional[PipelineWorker] = None
+        self._voice_scan_worker: Optional[VoiceScanWorker] = None
 
         self._setup_ui()
         self._apply_config_to_ui(ProcessingConfig.preset_outdoor_stage())
+
 
     def _setup_ui(self) -> None:
         central = QWidget(self)
@@ -285,7 +326,7 @@ class MainWindow(QMainWindow):
         grp_bands = QGroupBox("📊 周波数帯域別エネルギー＆ステレオ位相相関 (L/R Corr)")
         b_layout = QVBoxLayout(grp_bands)
         self.list_diag_bands = QListWidget()
-        self.list_diag_bands.setMaximumHeight(135)
+        self.list_diag_bands.setMaximumHeight(105)
         b_layout.addWidget(self.list_diag_bands)
         layout.addWidget(grp_bands)
 
@@ -297,7 +338,7 @@ class MainWindow(QMainWindow):
         w_layout.addWidget(self.lbl_wind_summary)
 
         self.list_diag_wind = QListWidget()
-        self.list_diag_wind.setMaximumHeight(125)
+        self.list_diag_wind.setMaximumHeight(88)
         self.list_diag_wind.itemDoubleClicked.connect(self.on_wind_event_double_clicked)
         w_layout.addWidget(self.list_diag_wind)
 
@@ -306,7 +347,38 @@ class MainWindow(QMainWindow):
         w_layout.addWidget(self.btn_add_wind_to_pinpoint)
         layout.addWidget(grp_wind)
 
-        # 3. 診断アドバイス＆ワンクリック推奨設定反映
+        # 3. 検出された人の声・話し声・咳払い・曲間アナウンス候補区間一覧
+        grp_voice = QGroupBox("🗣 検出された人の声・咳払い・近接雑音候補（ダブルクリックでジャンプ＆試聴）")
+        v_layout = QVBoxLayout(grp_voice)
+        self.lbl_voice_summary = QLabel("ファイルを開くと自動で近接話し声・咳払い・曲間声の候補をスキャンします。")
+        self.lbl_voice_summary.setStyleSheet("color: #38bdf8; font-weight: bold;")
+        v_layout.addWidget(self.lbl_voice_summary)
+
+        self.list_diag_voice = QListWidget()
+        self.list_diag_voice.setMaximumHeight(98)
+        self.list_diag_voice.itemDoubleClicked.connect(self.on_voice_event_double_clicked)
+        v_layout.addWidget(self.list_diag_voice)
+
+        voice_btn_row = QHBoxLayout()
+        self.btn_scan_voice_ai = QPushButton("🤖 AI (Demucs) で声区間を精密スキャン")
+        self.btn_scan_voice_ai.setToolTip(
+            "大音量の演奏中に紛れ込んだ話し声や掛け声までAIで高精度に探します（GPUで数秒〜十数秒）"
+        )
+        self.btn_scan_voice_ai.clicked.connect(self.on_run_ai_voice_scan)
+
+        self.btn_add_sel_voice_to_pinpoint = QPushButton("➕ 選択した声候補を追加")
+        self.btn_add_sel_voice_to_pinpoint.clicked.connect(self.on_add_selected_voice_event_to_pinpoint)
+
+        self.btn_add_all_voice_to_pinpoint = QPushButton("➕ 全声候補を一括追加")
+        self.btn_add_all_voice_to_pinpoint.clicked.connect(self.on_add_all_voice_events_to_pinpoint)
+
+        voice_btn_row.addWidget(self.btn_scan_voice_ai)
+        voice_btn_row.addWidget(self.btn_add_sel_voice_to_pinpoint)
+        voice_btn_row.addWidget(self.btn_add_all_voice_to_pinpoint)
+        v_layout.addLayout(voice_btn_row)
+        layout.addWidget(grp_voice)
+
+        # 4. 診断アドバイス＆ワンクリック推奨設定反映
         grp_rec = QGroupBox("💡 診断結果からのフィルタ設定アドバイス")
         r_layout = QVBoxLayout(grp_rec)
         self.txt_diag_recommendations = QTextEdit()
@@ -367,15 +439,20 @@ class MainWindow(QMainWindow):
         layout.addWidget(grp_ai)
 
         # ピンポイント適用区間リスト管理
-        grp_regions = QGroupBox("📋 ピンポイント除去対象区間リスト（波形下の「➕」ボタンで追加）")
+        grp_regions = QGroupBox("📋 ピンポイント除去対象区間リスト（波形下の「➕」ボタンまたは自動検出で追加）")
         reg_layout = QVBoxLayout(grp_regions)
 
         lbl_hint = QLabel(
-            "※観客の話し声や咳払いが入った数秒間だけを波形上で選択して追加すると、\n"
-            "　その時間帯だけピンポイントに処理し、他の演奏区間を100%無劣化に保てます。"
+            "※観客の話し声や咳払いが入った数秒間だけをピンポイント登録すると、\n"
+            "　その時間帯だけ声を除去し、他の演奏区間を100%無劣化に保てます。"
         )
         lbl_hint.setStyleSheet("color: #9aa2b1; font-size: 12px;")
         reg_layout.addWidget(lbl_hint)
+
+        btn_jump_voice_scan = QPushButton("🔍 声・咳払い混入候補の自動検出リストを見る / AI精密スキャン（診断タブへ）")
+        btn_jump_voice_scan.setObjectName("accentButton")
+        btn_jump_voice_scan.clicked.connect(lambda: self.tabs.setCurrentIndex(0))
+        reg_layout.addWidget(btn_jump_voice_scan)
 
         self.list_pinpoint_regions = QListWidget()
         self.list_pinpoint_regions.itemDoubleClicked.connect(self.on_pinpoint_item_double_clicked)
@@ -392,6 +469,7 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(grp_regions, stretch=1)
         return tab
+
 
     def _build_tab_noise_and_eq(self) -> QWidget:
         tab = QWidget()
@@ -784,6 +862,9 @@ class MainWindow(QMainWindow):
             for ev in report.wind_events:
                 ev.start_sec += offset_sec
                 ev.end_sec += offset_sec
+            for vev in report.voice_events:
+                vev.start_sec += offset_sec
+                vev.end_sec += offset_sec
             if report.suggested_noise_sample_region is not None:
                 ns, ne = report.suggested_noise_sample_region
                 report.suggested_noise_sample_region = (ns + offset_sec, ne + offset_sec)
@@ -812,8 +893,25 @@ class MainWindow(QMainWindow):
                     f"[{ev.severity}] (風乱流レベル:{ev.peak_side_db:.1f}dB / 乱流比:{ev.max_side_mid_ratio:.2f})"
                 )
 
+        self._populate_voice_events_list(report, scope_str)
+
         self.txt_diag_recommendations.setPlainText("\n\n".join(report.recommendations_text))
         self.btn_apply_recommended.setEnabled(True)
+
+    def _populate_voice_events_list(self, report: AudioDiagnosisReport, scope_str: str = "") -> None:
+        prefix = f"{scope_str} " if scope_str else ""
+        self.lbl_voice_summary.setText(f"{prefix}声・咳払い候補判定: {report.voice_summary}")
+        self.list_diag_voice.clear()
+        if not report.voice_events:
+            self.list_diag_voice.addItem(
+                "✅ 顕著な近接話し声・咳払い候補はありません（演奏中の声も探す場合は『🤖 AIで声区間を精密スキャン』を押してください）。"
+            )
+        else:
+            for idx, vev in enumerate(report.voice_events, start=1):
+                self.list_diag_voice.addItem(
+                    f"{idx:02d}. {format_time_mmss(vev.start_sec)} 〜 {format_time_mmss(vev.end_sec)} "
+                    f"[{vev.detection_type} / 確度:{vev.confidence * 100:.0f}%] ({vev.reason})"
+                )
 
     def on_wind_event_double_clicked(self, item: QListWidgetItem) -> None:
         if not self.latest_diagnosis or not self.latest_diagnosis.wind_events:
@@ -850,7 +948,161 @@ class MainWindow(QMainWindow):
             f"検出された {added} 箇所の風切り音区間をピンポイント除去リストへ登録しました。",
         )
 
+    def on_voice_event_double_clicked(self, item: QListWidgetItem) -> None:
+        if not self.latest_diagnosis or not self.latest_diagnosis.voice_events:
+            return
+        row = self.list_diag_voice.row(item)
+        if 0 <= row < len(self.latest_diagnosis.voice_events):
+            vev = self.latest_diagnosis.voice_events[row]
+            self.waveform_widget.set_selected_region(vev.start_sec, vev.end_sec)
+            self.player_widget.seek_to_sec(vev.start_sec)
+            self.lbl_status.setText(
+                f"🗣 声・咳払い候補区間 ({format_time_mmss(vev.start_sec)} 〜 {format_time_mmss(vev.end_sec)}) を選択しました。再生ボタンで実際の音を確認できます。"
+            )
+
+    def on_run_ai_voice_scan(self) -> None:
+        if not self.session:
+            return
+        if self._voice_scan_worker is not None and self._voice_scan_worker.isRunning():
+            return
+
+        sr = self.session.sample_rate
+        full_audio = self.session.original_audio
+        offset_sec = 0.0
+
+        if self.waveform_widget.has_selection:
+            s_sec, e_sec = self.waveform_widget.get_selected_region()
+            if e_sec - s_sec >= 1.0:
+                reply = QMessageBox.question(
+                    self,
+                    "AI声スキャンの範囲確認",
+                    f"現在波形上で選択されている範囲 ({format_time_mmss(s_sec)} 〜 {format_time_mmss(e_sec)}) だけをAIスキャンしますか？\n"
+                    "（「No」を選ぶとトラック全体をAIスキャンします）",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    s_idx = max(0, min(int(s_sec * sr), full_audio.shape[1]))
+                    e_idx = max(s_idx, min(int(e_sec * sr), full_audio.shape[1]))
+                    target_audio = full_audio[:, s_idx:e_idx]
+                    offset_sec = s_sec
+                else:
+                    target_audio = full_audio
+            else:
+                target_audio = full_audio
+        else:
+            target_audio = full_audio
+
+        self.btn_scan_voice_ai.setEnabled(False)
+        self.btn_run_pipeline.setEnabled(False)
+        self.progress_bar.setValue(10)
+        self.lbl_status.setText("🤖 AI (Demucs) で人の声・話し声混入区間を精密スキャン中...")
+
+        self._voice_scan_worker = VoiceScanWorker(
+            pipeline=self.pipeline,
+            audio=target_audio,
+            sample_rate=sr,
+            offset_sec=offset_sec,
+            parent=self,
+        )
+        self._voice_scan_worker.progress_updated.connect(self._on_worker_progress)
+        self._voice_scan_worker.finished_success.connect(self._on_voice_scan_finished)
+        self._voice_scan_worker.failed_error.connect(self._on_voice_scan_failed)
+        self._voice_scan_worker.start()
+
+    def _on_voice_scan_finished(self, ai_events: list, offset_sec: float) -> None:
+        self.btn_scan_voice_ai.setEnabled(True)
+        self.btn_run_pipeline.setEnabled(True)
+        self.progress_bar.setValue(100)
+
+        if not self.latest_diagnosis:
+            return
+
+        for ev in ai_events:
+            ev.start_sec += offset_sec
+            ev.end_sec += offset_sec
+
+        # 既存の高速スキャン候補とAIスキャン候補を統合してマージする
+        combined = list(self.latest_diagnosis.voice_events) + list(ai_events)
+        merged = AudioAnalyzer._merge_voice_events(combined, merge_gap_sec=0.6)
+        self.latest_diagnosis.voice_events = merged
+        total_sec = sum(e.end_sec - e.start_sec for e in merged)
+        if merged:
+            self.latest_diagnosis.voice_summary = (
+                f"AI精密スキャン完了：計 {len(merged)} 区間（合計 {total_sec:.1f} 秒の声・咳払い候補を検出）"
+            )
+        else:
+            self.latest_diagnosis.voice_summary = "AI精密スキャン完了：人の声の混入区間は検出されませんでした"
+
+        self._populate_voice_events_list(self.latest_diagnosis)
+        self.lbl_status.setText(
+            f"🤖 AI声精密スキャンが完了しました（計 {len(merged)} 箇所の候補区間）。リストをダブルクリックして試聴できます。"
+        )
+
+    def _on_voice_scan_failed(self, err_msg: str) -> None:
+        self.btn_scan_voice_ai.setEnabled(True)
+        self.btn_run_pipeline.setEnabled(True)
+        self.progress_bar.setValue(0)
+        self.lbl_status.setText("AI声スキャンエラー")
+        QMessageBox.critical(self, "AI声スキャンエラー", f"AI声スキャン中にエラーが発生しました:\n{err_msg}")
+
+    def on_add_selected_voice_event_to_pinpoint(self) -> None:
+        if not self.session or not self.latest_diagnosis or not self.latest_diagnosis.voice_events:
+            QMessageBox.information(self, "声候補区間なし", "追加できる声・咳払い候補区間がありません。")
+            return
+
+        row = self.list_diag_voice.currentRow()
+        if not (0 <= row < len(self.latest_diagnosis.voice_events)):
+            QMessageBox.information(
+                self,
+                "候補を選択してください",
+                "リストから追加したい声・咳払い候補区間をクリックして選択してから押してください。\n"
+                "（すべて追加する場合は『➕ 全声候補を一括追加』を押してください）",
+            )
+            return
+
+        vev = self.latest_diagnosis.voice_events[row]
+        self.session.pinpoint_regions.append(
+            TimeRegion(
+                start_sec=vev.start_sec,
+                end_sec=vev.end_sec,
+                label=f"{vev.detection_type} ({vev.confidence * 100:.0f}%)",
+            )
+        )
+        self._refresh_region_lists_and_overlays()
+        self.chk_vocal_enable.setChecked(True)
+        self.combo_vocal_scope.setCurrentIndex(1)  # ピンポイント区間のみ適用に自動切替
+        self.lbl_status.setText(
+            f"🗣 声候補区間 ({format_time_mmss(vev.start_sec)} 〜 {format_time_mmss(vev.end_sec)}) をピンポイント声除去リストへ追加しました！"
+        )
+
+    def on_add_all_voice_events_to_pinpoint(self) -> None:
+        if not self.session or not self.latest_diagnosis or not self.latest_diagnosis.voice_events:
+            QMessageBox.information(self, "声候補区間なし", "追加できる声・咳払い候補区間がありません。")
+            return
+
+        added = 0
+        for vev in self.latest_diagnosis.voice_events:
+            self.session.pinpoint_regions.append(
+                TimeRegion(
+                    start_sec=vev.start_sec,
+                    end_sec=vev.end_sec,
+                    label=f"{vev.detection_type} ({vev.confidence * 100:.0f}%)",
+                )
+            )
+            added += 1
+
+        self._refresh_region_lists_and_overlays()
+        self.chk_vocal_enable.setChecked(True)
+        self.combo_vocal_scope.setCurrentIndex(1)  # ピンポイント区間のみ適用に自動切替
+        QMessageBox.information(
+            self,
+            "ピンポイント声除去リストへ追加完了",
+            f"検出された {added} 箇所の声・咳払い候補区間をピンポイント除去リストへ登録し、\n"
+            "AI声除去の適用範囲を『登録したピンポイント区間のみに適用（他は100%無加工維持）』に設定しました！",
+        )
+
     def on_apply_recommended_diagnosis(self) -> None:
+
         if not self.session or not self.latest_diagnosis:
             return
         rec = self.latest_diagnosis.recommended_config

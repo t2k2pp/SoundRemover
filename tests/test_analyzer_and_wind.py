@@ -84,3 +84,45 @@ def test_audio_analyzer_detects_wind_and_recommends_settings() -> None:
     assert report.recommended_config.wind_reduction_enabled is True
     assert report.suggested_noise_sample_region is not None
     assert len(report.recommendations_text) >= 2
+
+
+def test_voice_candidate_fast_and_ai_scanners_detect_speech_and_cough() -> None:
+    sr = 48000
+    duration = 6.0
+    t = np.linspace(0.0, duration, int(sr * duration), endpoint=False, dtype=np.float32)
+
+    # 吹奏楽の持続ハーモニー（遠距離音源：左右バランス良好・包絡線が滑らか）
+    band_bass = 0.18 * np.sin(2.0 * np.pi * 110.0 * t)
+    band_mid_l = 0.15 * np.sin(2.0 * np.pi * 440.0 * t)
+    band_mid_r = 0.15 * np.sin(2.0 * np.pi * 440.0 * t + 0.15)
+
+    left = band_bass + band_mid_l
+    right = band_bass + band_mid_r
+
+    # 2.0秒〜3.5秒の間だけ、カメラの近く（左寄り近接マイク）で観客の話し声（5Hzの音節変調＋700Hz/1500Hzフォルマント）が混入
+    v_s, v_e = int(2.0 * sr), int(3.5 * sr)
+    tv = t[v_s:v_e]
+    syllable_env = 0.5 * (1.0 + np.sin(2.0 * np.pi * 5.5 * tv)) ** 2  # 5.5Hz 音節リズム
+    near_voice = syllable_env * (
+        0.22 * np.sin(2.0 * np.pi * 650.0 * tv) + 0.16 * np.sin(2.0 * np.pi * 1450.0 * tv)
+    )
+
+    left[v_s:v_e] += near_voice
+    right[v_s:v_e] += 0.20 * near_voice  # カメラ近傍での左右バランス偏り
+
+    stereo = np.vstack([left, right]).astype(np.float32)
+
+    # 1. 高速音響・空間特徴スキャンで 2.0〜3.5秒付近の声候補が検出されること
+    fast_events = AudioAnalyzer.scan_voice_candidates_fast(stereo, sr)
+    assert len(fast_events) >= 1
+    assert any(ev.start_sec <= 2.5 and ev.end_sec >= 2.8 for ev in fast_events)
+
+    # 2. AI Vocal Stem スキャンでも正確に 2.0〜3.5秒の声区間のみが検出されること
+    vocal_stem = np.zeros_like(stereo)
+    vocal_stem[0, v_s:v_e] = near_voice
+    vocal_stem[1, v_s:v_e] = 0.20 * near_voice
+    ai_events = AudioAnalyzer.scan_voice_candidates_ai(stereo, sr, vocal_stem)
+    assert len(ai_events) == 1
+    assert 1.7 <= ai_events[0].start_sec <= 2.3
+    assert 3.2 <= ai_events[0].end_sec <= 3.8
+

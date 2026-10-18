@@ -40,6 +40,17 @@ class WindBurstEvent:
 
 
 @dataclass
+class VoiceCandidateEvent:
+    """検出された人の声・話し声・咳払い・アナウンス候補区間"""
+    start_sec: float
+    end_sec: float
+    voice_db: float
+    confidence: float  # 0.0 〜 1.0
+    detection_type: str  # "近接話し声・咳払い候補", "曲間・弱奏時の声候補", "AI声成分検出"
+    reason: str
+
+
+@dataclass
 class AudioDiagnosisReport:
     """音響・周波数特性の総合診断レポート"""
     duration_sec: float
@@ -50,6 +61,8 @@ class AudioDiagnosisReport:
     band_stats: List[BandStat] = field(default_factory=list)
     wind_events: List[WindBurstEvent] = field(default_factory=list)
     wind_severity_summary: str = "なし"
+    voice_events: List[VoiceCandidateEvent] = field(default_factory=list)
+    voice_summary: str = "なし"
     suggested_noise_sample_region: Optional[Tuple[float, float]] = None
     noise_floor_db: float = -70.0
     recommendations_text: List[str] = field(default_factory=list)
@@ -57,7 +70,8 @@ class AudioDiagnosisReport:
 
 
 class AudioAnalyzer:
-    """音声データの周波数特性・風切り音・ホワイトノイズを診断し、最適設定を提案するクラス"""
+    """音声データの周波数特性・風切り音・人の声候補・ホワイトノイズを診断し、最適設定を提案するクラス"""
+
 
     @staticmethod
     def _safe_corrcoef(x: np.ndarray, y: np.ndarray) -> float:
@@ -202,7 +216,15 @@ class AudioAnalyzer:
         else:
             wind_summary = f"軽度（計 {len(wind_events)} 区間 / 合計 {total_wind_sec:.1f} 秒の微弱な風を検出）"
 
-        # 3. ホワイトノイズ見本（最も静かで定常的な1.0秒区間）の自動探索
+        # 3. 人の声・話し声・咳払い・曲間アナウンス候補区間の高速スキャン
+        voice_events = cls.scan_voice_candidates_fast(audio, sample_rate)
+        total_voice_sec = sum(ev.end_sec - ev.start_sec for ev in voice_events)
+        if not voice_events:
+            voice_summary = "なし（顕著な近接話し声・咳払い候補は検出されませんでした）"
+        else:
+            voice_summary = f"計 {len(voice_events)} 区間（合計 {total_voice_sec:.1f} 秒の声・咳払い・近接雑音候補を検出）"
+
+        # 4. ホワイトノイズ見本（最も静かで定常的な1.0秒区間）の自動探索
         suggested_noise_region: Optional[Tuple[float, float]] = None
         noise_floor_db = -65.0
         win_1s = sample_rate
@@ -229,7 +251,7 @@ class AudioAnalyzer:
                 noise_floor_db = best_db
                 suggested_noise_region = (best_start, min(duration_sec, best_start + 1.2))
 
-        # 4. 診断に基づく推奨設定 (`ProcessingConfig`) とアドバイス文章の生成
+        # 5. 診断に基づく推奨設定 (`ProcessingConfig`) とアドバイス文章の生成
         rec_cfg = ProcessingConfig.preset_outdoor_stage() if base_config is None else ProcessingConfig(**base_config.__dict__)
         recommendations: List[str] = []
 
@@ -258,6 +280,17 @@ class AudioAnalyzer:
             rec_cfg.highpass_cutoff_hz = 40.0
             recommendations.append(
                 "✅ 【風切り音診断】マイク吹かれ（風切り音）は検出されませんでした。ローカットは最低限の 40Hz で楽器の重低音をフルに活かせます。"
+            )
+
+        if voice_events:
+            recommendations.append(
+                f"🗣 【人の声・咳払い候補検出】近接話し声・咳払い・曲間声の疑いがある区間が {len(voice_events)} 箇所（合計 {total_voice_sec:.1f}秒）検出されました。"
+                "上の『🗣 検出された声・咳払い候補区間』をダブルクリックして試聴し、不要な声であれば『➕ ピンポイント除去リストへ追加』を押すだけでその時間帯の声だけを狙い撃ちで消去できます。"
+                "さらに演奏と重なった微細な声も探したい場合は『🤖 AIで声区間を精密スキャン』を実行してください。"
+            )
+        else:
+            recommendations.append(
+                "🗣 【人の声・咳払い診断】高速空間スキャンでは顕著な近接私語や曲間アナウンスは検出されませんでした（大音量の演奏中に紛れた声も探す場合は『🤖 AIで声区間を精密スキャン』ボタンを押してください）。"
             )
 
         # 中低域のこもり (180-400Hz) vs 主旋律 (400-2500Hz) のバランス診断
@@ -316,8 +349,264 @@ class AudioAnalyzer:
             band_stats=band_stats,
             wind_events=wind_events,
             wind_severity_summary=wind_summary,
+            voice_events=voice_events,
+            voice_summary=voice_summary,
             suggested_noise_sample_region=suggested_noise_region,
             noise_floor_db=noise_floor_db,
             recommendations_text=recommendations,
             recommended_config=rec_cfg,
         )
+
+    @classmethod
+    def scan_voice_candidates_fast(
+        cls,
+        audio: np.ndarray,
+        sample_rate: int,
+    ) -> List[VoiceCandidateEvent]:
+        """
+        スマート風切り音検出の空間・音響解析を発展させ、1秒以内で「人の話し声・咳払い・曲間アナウンス」の
+        疑いがある時間帯を自動ピックアップする（高速音響・空間特徴スキャン）。
+
+        検出ロジック:
+        1. 声のフォルマント＆子音帯域 (300〜3800Hz) の Mid/Side 比率の局所突出（カメラ近傍での私語・咳払いは左右マイクのバランス・位相がステージ演奏より偏る）
+        2. 短時間サブフレーム (20ms単位) の包絡線変調度 (CV = std/mean) およびクレストファクタ（人の話し声特有の3〜9Hz音節リズムや咳の突発アタック）
+        3. 低音楽器帯域 (60〜220Hz) が静かな曲間・弱奏時に、声帯域 (300〜3800Hz) が突出する現象
+        """
+        if audio.ndim == 1:
+            audio = audio[np.newaxis, :]
+
+        channels, total_samples = audio.shape
+        win = int(0.5 * sample_rate)
+        hop = max(1, int(0.25 * sample_rate))
+        if total_samples < win or sample_rate <= 0:
+            return []
+
+        nyquist = 0.5 * sample_rate
+        duration_sec = total_samples / float(sample_rate)
+
+        # 声の主要フォルマント・子音帯域 (300Hz 〜 3800Hz)
+        v_hi = min(3800.0, nyquist * 0.90)
+        if v_hi <= 320.0:
+            return []
+        sos_v = signal.butter(3, [300.0 / nyquist, v_hi / nyquist], btype="bandpass", output="sos")
+        v_sig = signal.sosfiltfilt(sos_v, audio, axis=1)
+
+        # 低音楽器リファレンス帯域 (60Hz 〜 220Hz)
+        sos_b = signal.butter(3, [60.0 / nyquist, min(220.0, nyquist * 0.5) / nyquist], btype="bandpass", output="sos")
+        b_sig = signal.sosfiltfilt(sos_b, audio, axis=1)
+
+        if channels >= 2:
+            mid_v = 0.5 * (v_sig[0] + v_sig[1])
+            side_v = 0.5 * (v_sig[0] - v_sig[1])
+            side_b = 0.5 * (b_sig[0] - b_sig[1])
+        else:
+            mid_v = v_sig[0]
+            side_v = np.zeros_like(mid_v)
+            side_b = np.zeros_like(mid_v)
+
+        b_mono = b_sig.mean(axis=0)
+        v_energy_trace = np.mean(np.square(v_sig, dtype=np.float32), axis=0)
+
+
+        sub_len = max(1, int(0.02 * sample_rate))  # 20ms サブフレーム（音節変調・咳払いアタック計測用）
+        window_records = []
+
+        for start_idx in range(0, total_samples - win + 1, hop):
+            end_idx = start_idx + win
+            v_seg_sq = v_energy_trace[start_idx:end_idx]
+            v_rms = float(np.sqrt(np.mean(v_seg_sq, dtype=np.float64) + 1e-12))
+            v_db = 20.0 * np.log10(v_rms)
+
+            b_rms = float(np.sqrt(np.mean(np.square(b_mono[start_idx:end_idx], dtype=np.float64)) + 1e-12))
+            b_db = 20.0 * np.log10(b_rms)
+
+            m_rms = float(np.sqrt(np.mean(np.square(mid_v[start_idx:end_idx], dtype=np.float64)) + 1e-12))
+            s_rms = float(np.sqrt(np.mean(np.square(side_v[start_idx:end_idx], dtype=np.float64)) + 1e-12))
+            sm_ratio = s_rms / (m_rms + 1e-9)
+
+            sb_rms = float(np.sqrt(np.mean(np.square(side_b[start_idx:end_idx], dtype=np.float64)) + 1e-12))
+            sb_db = 20.0 * np.log10(sb_rms)
+
+            # 20msサブフレームごとの振幅包絡線から音節変調度 (CV) とクレストファクタを算出
+            n_subs = win // sub_len
+            if n_subs >= 4:
+                trimmed = v_seg_sq[: n_subs * sub_len].reshape(n_subs, sub_len)
+                sub_env = np.sqrt(np.mean(trimmed, axis=1) + 1e-12)
+                mean_env = float(np.mean(sub_env))
+                mod_cv = float(np.std(sub_env)) / (mean_env + 1e-9)
+                crest = float(np.max(sub_env)) / (mean_env + 1e-9)
+            else:
+                mod_cv = 0.0
+                crest = 1.0
+
+            window_records.append(
+                (start_idx / float(sample_rate), end_idx / float(sample_rate), v_db, b_db, sm_ratio, sb_db, mod_cv, crest)
+            )
+
+        if not window_records:
+            return []
+
+        active_sm = [r[4] for r in window_records if r[2] > -50.0]
+        active_mod = [r[6] for r in window_records if r[2] > -50.0]
+        median_sm = float(np.median(active_sm)) if active_sm else 0.25
+        median_mod = float(np.median(active_mod)) if active_mod else 0.20
+
+        raw_candidates: List[VoiceCandidateEvent] = []
+        for t_s, t_e, v_db, b_db, sm_ratio, sb_db, mod_cv, crest in window_records:
+            # 無音に近い区間や、低域の風吹かれ乱流(sb_db)が声帯域より圧倒的に強い風切り音区間は除外
+            if v_db < -46.0 or sb_db > v_db + 3.0:
+                continue
+
+            # パターンA: 曲間・弱奏時のアナウンス・話し声・咳払い（低音楽器が静かで、声帯域が突出し音節変動がある）
+            is_quiet_speech = (
+                b_db < -35.0
+                and (v_db - b_db) >= 6.0
+                and (mod_cv >= 0.26 or crest >= 1.75)
+            )
+
+            # パターンB: カメラ近傍での話し声・ささやき・咳払い（声帯域のステレオ近接偏り＋音節リズム/突発アタック）
+            is_nearfield_chatter = (
+                channels >= 2
+                and sm_ratio >= max(0.32, median_sm * 1.35)
+                and (mod_cv >= 0.30 or crest >= 1.85)
+                and (v_db - b_db) >= -5.0
+            )
+
+            # パターンC: 強い音節変調・咳払いアタック（モノラル録音や正面近接の声にも対応）
+            is_strong_syllabic = (
+                mod_cv >= max(0.46, median_mod * 1.60)
+                and (v_db - b_db) >= -2.0
+                and (channels == 1 or sm_ratio >= median_sm * 1.05)
+            )
+
+            if is_quiet_speech or is_nearfield_chatter or is_strong_syllabic:
+                if is_quiet_speech:
+                    dtype = "曲間・弱奏時の声候補"
+                    reason = f"静寂時の声帯域突出(+{v_db - b_db:.1f}dB) / 音節変動:{mod_cv:.2f}"
+                    conf = min(0.95, 0.55 + (v_db - b_db) * 0.02 + mod_cv * 0.3)
+                elif is_nearfield_chatter:
+                    dtype = "近接話し声・咳払い候補"
+                    reason = f"近接ステレオ偏り(S/M比:{sm_ratio:.2f}) / 音節変動:{mod_cv:.2f}"
+                    conf = min(0.95, 0.50 + (sm_ratio / max(0.1, median_sm) - 1.0) * 0.25 + mod_cv * 0.3)
+                else:
+                    dtype = "話し声・咳払い候補"
+                    reason = f"音節リズム・突発変動(CV:{mod_cv:.2f}, Peak比:{crest:.1f})"
+                    conf = min(0.90, 0.45 + mod_cv * 0.4)
+
+                raw_candidates.append(
+                    VoiceCandidateEvent(
+                        start_sec=max(0.0, t_s - 0.05),
+                        end_sec=min(duration_sec, t_e + 0.05),
+                        voice_db=v_db,
+                        confidence=float(np.clip(conf, 0.30, 0.98)),
+                        detection_type=dtype,
+                        reason=reason,
+                    )
+                )
+
+        return cls._merge_voice_events(raw_candidates, merge_gap_sec=0.6)
+
+    @classmethod
+    def scan_voice_candidates_ai(
+        cls,
+        audio: np.ndarray,
+        sample_rate: int,
+        vocal_stem: np.ndarray,
+    ) -> List[VoiceCandidateEvent]:
+        """
+        AI (Demucs) が分離した `vocal_stem` の短時間エネルギーと対全体比率、および音節変調度を解析し、
+        大音量の吹奏楽演奏中に重なって混入した話し声・掛け声・アナウンスも含めて高精度に検出する。
+        """
+        if audio.ndim == 1:
+            audio = audio[np.newaxis, :]
+        if vocal_stem.ndim == 1:
+            vocal_stem = vocal_stem[np.newaxis, :]
+
+        total_samples = min(audio.shape[1], vocal_stem.shape[1])
+        win = int(0.5 * sample_rate)
+        hop = max(1, int(0.25 * sample_rate))
+        if total_samples < win or sample_rate <= 0:
+            return []
+
+        duration_sec = total_samples / float(sample_rate)
+        nyquist = 0.5 * sample_rate
+
+        # 人の声の基音〜フォルマント帯域 (180Hz 〜 5200Hz) に絞って評価
+        v_hi = min(5200.0, nyquist * 0.90)
+        if v_hi > 200.0:
+            sos_v = signal.butter(3, [180.0 / nyquist, v_hi / nyquist], btype="bandpass", output="sos")
+            v_filt = signal.sosfiltfilt(sos_v, vocal_stem[:, :total_samples], axis=1)
+        else:
+            v_filt = vocal_stem[:, :total_samples]
+
+        v_sq = np.mean(np.square(v_filt, dtype=np.float32), axis=0)
+        tot_sq = np.mean(np.square(audio[:, :total_samples], dtype=np.float32), axis=0)
+        sub_len = max(1, int(0.02 * sample_rate))
+
+        raw_candidates: List[VoiceCandidateEvent] = []
+        for start_idx in range(0, total_samples - win + 1, hop):
+            end_idx = start_idx + win
+            v_rms = float(np.sqrt(np.mean(v_sq[start_idx:end_idx], dtype=np.float64) + 1e-12))
+            v_db = 20.0 * np.log10(v_rms)
+            if v_db < -46.0:
+                continue
+
+            t_rms = float(np.sqrt(np.mean(tot_sq[start_idx:end_idx], dtype=np.float64) + 1e-12))
+            v_ratio = v_rms / (t_rms + 1e-9)
+
+            n_subs = win // sub_len
+            if n_subs >= 4:
+                trimmed = v_sq[start_idx : start_idx + n_subs * sub_len].reshape(n_subs, sub_len)
+                sub_env = np.sqrt(np.mean(trimmed, axis=1) + 1e-12)
+                mod_cv = float(np.std(sub_env)) / (float(np.mean(sub_env)) + 1e-9)
+            else:
+                mod_cv = 0.0
+
+            # AI Vocal成分が明確に存在し、管楽器の持続音漏れではない（比率が高い、または音節変動がある）区間を検出
+            if v_ratio >= 0.18 or (v_ratio >= 0.10 and mod_cv >= 0.30):
+                conf = float(np.clip(0.50 + v_ratio * 0.8 + mod_cv * 0.25, 0.45, 0.99))
+                raw_candidates.append(
+                    VoiceCandidateEvent(
+                        start_sec=max(0.0, start_idx / float(sample_rate) - 0.05),
+                        end_sec=min(duration_sec, end_idx / float(sample_rate) + 0.05),
+                        voice_db=v_db,
+                        confidence=conf,
+                        detection_type="AI声成分検出(Demucs)",
+                        reason=f"AI声成分レベル:{v_db:.1f}dB / 声成分比率:{v_ratio * 100:.0f}%",
+                    )
+                )
+
+        return cls._merge_voice_events(raw_candidates, merge_gap_sec=0.6)
+
+    @staticmethod
+    def _merge_voice_events(
+        events: List[VoiceCandidateEvent],
+        merge_gap_sec: float = 0.6,
+    ) -> List[VoiceCandidateEvent]:
+        """連続または近接する声候補区間を1つのイベントにマージする"""
+        if not events:
+            return []
+
+        merged: List[VoiceCandidateEvent] = []
+        for ev in sorted(events, key=lambda x: x.start_sec):
+            if merged and (ev.start_sec - merged[-1].end_sec) <= merge_gap_sec:
+                prev = merged[-1]
+                prev.end_sec = max(prev.end_sec, ev.end_sec)
+                if ev.confidence > prev.confidence:
+                    prev.confidence = ev.confidence
+                    prev.detection_type = ev.detection_type
+                    prev.reason = ev.reason
+                prev.voice_db = max(prev.voice_db, ev.voice_db)
+            else:
+                merged.append(
+                    VoiceCandidateEvent(
+                        start_sec=ev.start_sec,
+                        end_sec=ev.end_sec,
+                        voice_db=ev.voice_db,
+                        confidence=ev.confidence,
+                        detection_type=ev.detection_type,
+                        reason=ev.reason,
+                    )
+                )
+        return merged
+
