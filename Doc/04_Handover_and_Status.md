@@ -1,6 +1,6 @@
 # SoundRemover 作業引き継ぎ書 (Handover Document)
 
-最終更新: 2026-10-18 (ToDo 3 完了 / ToDo 4 着手前)
+最終更新: 2026-10-18 (ToDo 4 完了 / ToDo 5 着手前)
 
 ---
 
@@ -33,26 +33,22 @@
   - `pyproject.toml`, `uv.lock`, `.venv`, `README.md`
   - `src/sound_remover/core/device_manager.py`, `src/sound_remover/core/ffmpeg_manager.py`, `src/sound_remover/core/audio_data.py`
   - `src/sound_remover/processors/extractor.py`
-- **[完了] ToDo 3: 音声加工・AI処理エンジン群の実装**
-  - `src/sound_remover/processors/vocal_remover.py`: Demucs (`htdemucs`) 声成分抽出、残差引き算 (`X - αV`)、楽器保護帯域制限 (110Hz〜6500Hz)、ピンポイント区間適用＋コサインクロスフェード
-  - `src/sound_remover/processors/noise_reducer.py`: スペクトルゲーティング (`noisereduce`)、ノイズ見本区間からのプロファイル学習機能、ミュージカルノイズ防止平滑化
-  - `src/sound_remover/processors/eq_filter.py`: 屋外風切り音ローカットフィルタ (30〜150Hz) ＋ 吹奏楽4バンドEQ (80Hz, 280Hz, 2.5kHz, 8kHz)
-  - `src/sound_remover/processors/mastering.py`: ITU-R BS.1770-4 ラウドネスノーマライズ (`pyloudnorm`) ＋ ルックアヘッド・ピークリミッター ＋ 曲分割・S字フェードイン/アウト
-  - `src/sound_remover/core/pipeline.py`: 全プロセッサを統括する非破壊オーディオ処理パイプライン＆チャプター一括書き出し
+- **[完了] ToDo 3: 音声加工・AI処理エンジン群の実装** (Commit: `d6aefd3`)
+  - `src/sound_remover/processors/vocal_remover.py`, `src/sound_remover/processors/noise_reducer.py`, `src/sound_remover/processors/eq_filter.py`, `src/sound_remover/processors/mastering.py`, `src/sound_remover/core/pipeline.py`
+- **[完了] ToDo 4: デスクトップGUI (`PySide6` + `PyQtGraph`) の実装**
+  - `src/sound_remover/ui/theme.py`
+  - `src/sound_remover/ui/waveform_widget.py` (波形表示・範囲選択・ピンポイント区間登録・ノイズ見本登録・曲分割登録)
+  - `src/sound_remover/ui/player_widget.py` (Original / Processed ワンクリックA/B聴き比べ再生プレイヤー)
+  - `src/sound_remover/ui/main_window.py` および `src/sound_remover/main.py`
 
 ### 次に実施する作業
-- **[次ステップ] ToDo 4: デスクトップGUI (`PySide6` + `PyQtGraph`) の実装**
+- **[次ステップ] ToDo 5: 自動テスト・サンプル検証用音源生成スクリプト・起動スクリプト整備と最終動作確認**
 
 ---
 
 ## 4. 残りの作業（再開時に実施すること）
 
-1. **ToDo 4: デスクトップGUI (`PySide6` + `PyQtGraph`) の実装とPush**
-   - `src/sound_remover/ui/theme.py`
-   - `src/sound_remover/ui/waveform_widget.py` (波形表示・範囲選択・ピンポイント区間登録・ノイズ見本登録・曲分割登録)
-   - `src/sound_remover/ui/player_widget.py` (Original / Processed ワンクリックA/B聴き比べ再生プレイヤー)
-   - `src/sound_remover/ui/main_window.py` および `src/sound_remover/main.py`
-4. **ToDo 5: 自動テスト・サンプル検証・起動スクリプト整備と最終Push**
+1. **ToDo 5: 自動テスト・サンプル検証・起動スクリプト整備と最終Push**
    - `tests/test_device_manager.py`, `tests/test_processors.py` の作成と `uv run pytest` による全テスト通過確認
    - `run_windows.bat`, `run_unix.sh` の作成と動作確認
 

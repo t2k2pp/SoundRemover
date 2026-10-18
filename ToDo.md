@@ -26,11 +26,11 @@
   - [x] `src/sound_remover/processors/mastering.py`（ラウドネスノーマライズ LUFS、音割れ防止ピークリミッター、曲分割＆フェードイン・アウト書き出し）の実装
   - [x] `src/sound_remover/core/pipeline.py`（各プロセッサを統合し、全体適用およびピンポイント区間適用を行う非破壊パイプライン）の実装
 
-- [ ] **ToDo 4: デスクトップGUI（波形ビューア・範囲選択・A/B聴き比べプレイヤー・各種設定タブ・プリセット）の実装**
-  - [ ] `src/sound_remover/ui/theme.py`（視認性の高いダークスタジオテーマ）の実装
-  - [ ] `src/sound_remover/ui/waveform_widget.py`（PyQtGraphによる高速波形描画、ドラッグ範囲選択、ピンポイント適用区間・曲分割マーカーの可視化）の実装
-  - [ ] `src/sound_remover/ui/player_widget.py`（Original / Processed を再生位置を維持したままワンクリックで聴き比べできるオーディオプレイヤー、ループ再生）の実装
-  - [ ] `src/sound_remover/ui/main_window.py` および `src/sound_remover/main.py`（全機能を統合したメインウィンドウ、非同期ワーカースレッド処理、プリセット切替）の実装
+- [x] **ToDo 4: デスクトップGUI（波形ビューア・範囲選択・A/B聴き比べプレイヤー・各種設定タブ・プリセット）の実装**
+  - [x] `src/sound_remover/ui/theme.py`（視認性の高いダークスタジオテーマ）の実装
+  - [x] `src/sound_remover/ui/waveform_widget.py`（PyQtGraphによる高速波形描画、ドラッグ範囲選択、ピンポイント適用区間・曲分割マーカーの可視化）の実装
+  - [x] `src/sound_remover/ui/player_widget.py`（Original / Processed を再生位置を維持したままワンクリックで聴き比べできるオーディオプレイヤー、ループ再生）の実装
+  - [x] `src/sound_remover/ui/main_window.py` および `src/sound_remover/main.py`（全機能を統合したメインウィンドウ、非同期ワーカースレッド処理、プリセット切替）の実装
 
 - [ ] **ToDo 5: 自動テスト・サンプル検証用音源生成スクリプト・起動スクリプト・READMEの整備と最終動作確認**
   - [ ] `tests/test_device_manager.py` および `tests/test_processors.py`（ロスレス抽出、声除去、ホワイトノイズ除去、EQ、マスタリング、曲分割の単体・結合テスト）の作成と全テスト実行
