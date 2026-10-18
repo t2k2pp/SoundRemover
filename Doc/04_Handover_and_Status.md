@@ -1,6 +1,6 @@
 # SoundRemover 作業引き継ぎ書 (Handover Document)
 
-最終更新: 2026-10-18 (全ToDo 1〜5 実装・テスト完了)
+最終更新: 2026-10-18 (全ToDo 1〜6 実装・テスト完了)
 
 ---
 
@@ -37,10 +37,13 @@
   - `src/sound_remover/processors/vocal_remover.py`, `src/sound_remover/processors/noise_reducer.py`, `src/sound_remover/processors/eq_filter.py`, `src/sound_remover/processors/mastering.py`, `src/sound_remover/core/pipeline.py`
 - **[完了] ToDo 4: デスクトップGUI (`PySide6` + `PyQtGraph`) の実装** (Commit: `fbe66bd`)
   - `src/sound_remover/ui/theme.py`, `src/sound_remover/ui/waveform_widget.py`, `src/sound_remover/ui/player_widget.py`, `src/sound_remover/ui/main_window.py`, `src/sound_remover/main.py`
-- **[完了] ToDo 5: 自動テスト・サンプル検証用音源生成スクリプト・起動スクリプト整備と最終動作確認**
+- **[完了] ToDo 5: 自動テスト・サンプル検証用音源生成スクリプト・起動スクリプト整備と最終動作確認** (Commit: `2ac9239`, `5d1a019`)
   - `tests/test_device_manager.py`, `tests/test_processors.py` (`pytest` 全8テストPASS確認：`run_windows.bat --check` の実起動テスト含む)
   - `scripts/generate_sample_video.py` (屋外吹奏楽模擬サンプル動画生成スクリプト)
   - `run_windows.bat`, `run_unix.sh` (ワンクリック起動スクリプト：`cmd.exe` のCP932文字化け・改行ズレ防止のため純ASCII化済)
+- **[完了] ToDo 6: 波形ビューアの範囲選択UI・操作性の改善**
+  - `src/sound_remover/ui/waveform_widget.py`: ファイル読み込み直後を「未選択」状態に変更、波形上のマウス左ドラッグによる直接範囲選択・変更、単発クリックでの再生シーク、再生位置からの `[開始点(In)]` / `[終了点(Out)]` ボタン、秒数スピンボックス、選択解除ボタンを実装
+  - `tests/test_ui_waveform.py`: 波形範囲選択・未選択初期化の自動テスト追加（全9テストPASS）
 
 ---
 
